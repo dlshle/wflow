@@ -19,7 +19,16 @@ enum Type {
     CANCEL_JOB = 5; // from server only
     QUERY_WORKER_STATUS = 6; // from server only
     DISCONNECT_WORKER = 7; // from server only
+    JOB_UPDATE = 8; // client to server for job update(completion with result, failed with reason)
     CUSTOM = 100; // custom message for both server and worker
+}
+
+enum JobStatus {
+    PENDING = 0;
+    RUNNING = 1;
+    SUCCESS = 2;
+    FAILED = 3;
+    CANCELLED = 4;
 }
 
 message Message {
@@ -32,11 +41,25 @@ message Message {
     Status status = 7;
 }
 
+message Activity {
+    string id = 1;
+    string name = 2;
+    optional string description = 3;
+}
+
 message Job {
     string id = 1;
-    optional string description = 2;
+    string activity_id = 2;
     bytes param = 3;
     int32 dispatch_time_in_seconds = 4;
+}
+
+message JobReport {
+    Job job = 1;
+    string worker_id = 2;
+    bytes result = 3;
+    int32 job_started_time_seconds = 4;
+    JobStatus status = 5;
 }
 
 message Worker {
@@ -44,6 +67,7 @@ message Worker {
     SystemStat system_stat = 2;
     repeated string active_jobs = 3;
     optional string connected_server = 4;
+    repeated Activity supported_activities = 5;
 }
 
 message Server {

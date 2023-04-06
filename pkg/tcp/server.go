@@ -14,8 +14,17 @@ import (
 	gproto "google.golang.org/protobuf/proto"
 )
 
+type TCPServer interface {
+	Start() error
+	Broadcast(*proto.Message) error
+	ConnectedWorkerIDs() []string
+	RequestWorker(string, *proto.Message) (*proto.Message, error)
+	Close() error
+}
+
 type tcpServer struct {
 	ctx                 context.Context // this must hold logging ctx w/ server_id to s.id
+	tcpServer           gts.TCPServer
 	id                  string
 	logger              logging.Logger
 	messageHandler      MessageHandler
@@ -26,10 +35,57 @@ type tcpServer struct {
 	rwLock              *sync.RWMutex
 }
 
-func StartTCPServer(workflowServerID string, address string, port int) error {
-	var s tcpServer
-	server := gts.NewTCPServer(workflowServerID, address, port)
-	server.OnClientConnected(func(c gts.Connection) {
+func NewTCPServer(serverID, address string, port int, messageHandler MessageHandler) TCPServer {
+	s := &tcpServer{
+		ctx:                 logging.WrapCtx(context.Background(), "server_id", serverID),
+		id:                  serverID,
+		logger:              logging.GlobalLogger.WithPrefix("[TCPServer]"),
+		tcpServer:           gts.NewTCPServer(serverID, address, port),
+		messageHandler:      messageHandler,
+		connectedWorkers:    make(map[string]WorkerConnection),
+		notificationEmitter: notification.New[*proto.Message](DefaultMaxNotificationListeners),
+		asyncPool:           async.NewAsyncPool(serverID, DefaultMaxPoolSize, DefaultMaxAsyncPoolWorkerSize),
+		rwLock:              new(sync.RWMutex),
+	}
+	s.init()
+	return s
+}
+
+func (s *tcpServer) Start() error {
+	s.startedTime = time.Now()
+	return s.tcpServer.Start()
+}
+
+func (s *tcpServer) ConnectedWorkerIDs() []string {
+	s.rwLock.RLock()
+	defer s.rwLock.Unlock()
+	res := make([]string, 0)
+	for k := range s.connectedWorkers {
+		res = append(res, k)
+	}
+	return res
+}
+
+func (s *tcpServer) RequestWorker(workerID string, m *proto.Message) (*proto.Message, error) {
+	worker := s.getConnectedWorker(workerID)
+	if worker == nil {
+		return nil, errors.Error("worker " + workerID + " is not connected")
+	}
+	return worker.Request(m)
+}
+
+func (s *tcpServer) Close() error {
+	err := s.tcpServer.Stop()
+	s.rwLock.Lock()
+	for k := range s.connectedWorkers {
+		delete(s.connectedWorkers, k)
+	}
+	s.rwLock.Unlock()
+	return err
+}
+
+func (s *tcpServer) init() {
+	s.tcpServer.OnClientConnected(func(c gts.Connection) {
 		// flow to get
 		workerConn, err := s.exchangeProtocol(c)
 		if err != nil {
@@ -44,7 +100,7 @@ func StartTCPServer(workflowServerID string, address string, port int) error {
 		byteMessageHandler := createHandler(s.messageHandler, s.notificationEmitter)
 		c.OnMessage(func(b []byte) {
 			s.asyncPool.Execute(func() {
-				byteMessageHandler(ctx, c, b)
+				byteMessageHandler(ctx, workerConn, b)
 			})
 		})
 		c.OnError(func(err error) {
@@ -55,7 +111,6 @@ func StartTCPServer(workflowServerID string, address string, port int) error {
 			s.logger.Warn(ctx, "worker connection "+workerConn.ID()+" closed")
 		})
 	})
-	return server.Start()
 }
 
 func (s *tcpServer) Broadcast(m *proto.Message) error {
@@ -120,7 +175,7 @@ func (s *tcpServer) exchangeProtocol(c gts.Connection) (WorkerConnection, error)
 	if err != nil {
 		return nil, err
 	}
-	workerConn := NewWorkerConnection(workerInfo.Id, NewGeneralConnection(c))
+	workerConn := NewWorkerConnection(workerInfo.Id, NewGeneralConnection(c, DefaultRequestTimeoutMS))
 	// register worker to server
 	s.registerWorker(workerConn)
 	return workerConn, err

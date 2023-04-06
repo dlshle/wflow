@@ -16,6 +16,9 @@ type messageHandler struct {
 }
 
 func NewMessageHandler(processors map[proto.Type][]MessageProcessor) MessageHandler {
+	if processors[proto.Type_PING] == nil {
+		processors[proto.Type_PING] = []MessageProcessor{HandlePing}
+	}
 	return &messageHandler{
 		processors: processors,
 	}

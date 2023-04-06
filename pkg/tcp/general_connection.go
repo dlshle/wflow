@@ -15,6 +15,7 @@ type MessageProcessor func(context.Context, GeneralConnection, *proto.Message) e
 
 type GeneralConnection interface {
 	Send(*proto.Message) error
+	Respond(m *proto.Message, status proto.Status, payload []byte) error
 	Request(*proto.Message) (*proto.Message, error)
 	Close() error
 }
@@ -25,8 +26,8 @@ type generalConnection struct {
 	notificationCenter notification.WRNotificationEmitter[*proto.Message]
 }
 
-func NewGeneralConnection(c gts.Connection) GeneralConnection {
-	return &generalConnection{c: c, timeoutInMs: 0}
+func NewGeneralConnection(c gts.Connection, requestTimeoutMs int) GeneralConnection {
+	return &generalConnection{c: c, timeoutInMs: requestTimeoutMs}
 }
 
 func (c *generalConnection) Send(m *proto.Message) error {
@@ -37,7 +38,17 @@ func (c *generalConnection) Send(m *proto.Message) error {
 	return c.c.Write(data)
 }
 
+func (c *generalConnection) Respond(m *proto.Message, status proto.Status, payload []byte) error {
+	m.Type = proto.Type_RESPONSE
+	m.Status = status
+	m.Payload = payload
+	return c.Send(m)
+}
+
 func (c *generalConnection) Request(m *proto.Message) (*proto.Message, error) {
+	if !c.c.IsLive() {
+		return nil, errors.Error("connection isn't established or is lost")
+	}
 	return c.requestWithTimeout(c.timeoutInMs, m)
 }
 
