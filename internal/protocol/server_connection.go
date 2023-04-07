@@ -1,4 +1,4 @@
-package tcp
+package protocol
 
 type ServerConnection interface {
 	ID() string

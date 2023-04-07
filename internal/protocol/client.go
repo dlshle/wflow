@@ -1,4 +1,4 @@
-package tcp
+package protocol
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 
 type TCPClient interface {
 	Request(*proto.Message) (*proto.Message, error)
-	Connect() error
+	Connect() (ServerConnection, error)
 	Close() error
 }
 
@@ -76,9 +76,12 @@ func (c *tcpClient) init() {
 	})
 }
 
-func (c *tcpClient) Connect() error {
+func (c *tcpClient) Connect() (ServerConnection, error) {
 	_, err := c.tcpClient.Connect("")
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return c.serverConn, nil
 }
 
 func (c *tcpClient) Request(m *proto.Message) (*proto.Message, error) {
@@ -178,7 +181,7 @@ func (c *tcpClient) doHealthCheck() error {
 func (c *tcpClient) serverReconnectingLoop() {
 	c.logger.Info(c.ctx, "initiating server reconnecting loop")
 	for c.serverConn == nil {
-		err := c.Connect()
+		_, err := c.Connect()
 		if err == nil {
 			c.logger.Info(c.ctx, "server is reconnected")
 			return

@@ -1,4 +1,4 @@
-package tcp
+package protocol
 
 type WorkerConnection interface {
 	GeneralConnection

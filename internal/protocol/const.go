@@ -1,4 +1,4 @@
-package tcp
+package protocol
 
 const (
 	DefaultRequestTimeoutMS         = 1500 // 15 seconds request timeout

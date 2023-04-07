@@ -9,7 +9,7 @@ import (
 	"github.com/dlshle/gommon/errors"
 	"github.com/dlshle/gommon/logging"
 	"github.com/dlshle/wflow/internal/client/activity"
-	"github.com/dlshle/wflow/pkg/tcp"
+	"github.com/dlshle/wflow/pkg/protocol"
 	"github.com/dlshle/wflow/pkg/utils"
 	"github.com/dlshle/wflow/proto"
 	gproto "google.golang.org/protobuf/proto"
@@ -22,29 +22,34 @@ const (
 
 type JobManager interface {
 	Handle(context.Context, *proto.Job) error
+	SupportedActivityIDs() []string
+	SupportedActivities() []*proto.Activity
 	CancelJob(context.Context, *proto.Job) error
 	Jobs() []*proto.Job
+	JobIDs() []string
 	Job(string) (*proto.JobReport, error)
+	IsReady() bool
+	WorkerInfo() *proto.Worker
+	InitReportingServer(protocol.ServerConnection) error
 }
 
 type jobManager struct {
 	ctx              context.Context
-	serverConn       tcp.ServerConnection
+	serverConn       protocol.ServerConnection
 	workerID         string
 	logger           logging.Logger
-	activityHandlers map[string]activity.ActivityHandler // activity-id: handler
+	workerActivities map[string]activity.WorkerActivity
 	jobs             map[string]*cancellableJobReport
 	jobPool          async.AsyncPool
 	rwLock           *sync.RWMutex
 }
 
-func New(workerID string, serverConn tcp.ServerConnection, activityHandlers map[string]activity.ActivityHandler) JobManager {
+func New(workerID string, activityHandlers map[string]activity.WorkerActivity) JobManager {
 	return &jobManager{
 		ctx:              logging.WrapCtx(context.Background(), "worker_id", workerID),
 		workerID:         workerID,
-		serverConn:       serverConn,
 		logger:           logging.GlobalLogger.WithPrefix("[JobManager]"),
-		activityHandlers: activityHandlers,
+		workerActivities: activityHandlers,
 		jobs:             make(map[string]*cancellableJobReport),
 		jobPool:          async.NewAsyncPool("JobManager", defaultMaxAsyncPoolSize, defaultMaxAsyncWorkerSize),
 		rwLock:           new(sync.RWMutex),
@@ -76,6 +81,22 @@ func (m *jobManager) setCancellableJob(id string, jobReport *cancellableJobRepor
 	})
 }
 
+func (m *jobManager) SupportedActivityIDs() []string {
+	var activitiesIDs []string
+	for k := range m.workerActivities {
+		activitiesIDs = append(activitiesIDs, k)
+	}
+	return activitiesIDs
+}
+
+func (m *jobManager) SupportedActivities() []*proto.Activity {
+	var activities []*proto.Activity
+	for _, activity := range m.workerActivities {
+		activities = append(activities, activity.Activity())
+	}
+	return activities
+}
+
 func (m *jobManager) Jobs() []*proto.Job {
 	var jobs []*proto.Job
 	m.withRead(func() {
@@ -86,12 +107,60 @@ func (m *jobManager) Jobs() []*proto.Job {
 	return jobs
 }
 
+func (m *jobManager) JobIDs() []string {
+	jobs := m.Jobs()
+	jobIDs := make([]string, len(jobs), len(jobs))
+	for i, job := range jobs {
+		jobIDs[i] = job.Id
+	}
+	return jobIDs
+}
+
 func (m *jobManager) Job(jobID string) (*proto.JobReport, error) {
 	cancellableJobReport := m.getJobReportByID(jobID)
 	if cancellableJobReport == nil {
 		return nil, errors.Error("can not find job " + jobID)
 	}
 	return cancellableJobReport.JobReport, nil
+}
+
+func (m *jobManager) WorkerInfo() *proto.Worker {
+	return &proto.Worker{
+		Id:                  m.workerID,
+		SystemStat:          utils.GetSystemStat(),
+		ActiveJobs:          m.JobIDs(),
+		SupportedActivities: m.SupportedActivities(),
+		IsReady:             m.IsReady(),
+	}
+}
+
+func (m *jobManager) InitReportingServer(sc protocol.ServerConnection) error {
+	m.withWrite(func() {
+		m.serverConn = sc
+	})
+	return m.reportForWorkerReady()
+}
+
+func (m *jobManager) reportForWorkerReady() error {
+	worker := m.WorkerInfo()
+	workerData, err := gproto.Marshal(worker)
+	if err != nil {
+		return err
+	}
+	_, err = m.serverConn.Request(&proto.Message{
+		Id:      utils.RandomUUID(),
+		Type:    proto.Type_WORKER_READY,
+		Payload: workerData,
+	})
+	return err
+}
+
+func (m *jobManager) IsReady() bool {
+	isReady := false
+	m.withRead(func() {
+		isReady = m.serverConn != nil
+	})
+	return isReady
 }
 
 func (m *jobManager) CancelJob(ctx context.Context, job *proto.Job) (err error) {
@@ -119,7 +188,7 @@ func (m *jobManager) Handle(ctx context.Context, job *proto.Job) error {
 	if maybeJobReport != nil {
 		return errors.Error("job " + job.Id + " already exists")
 	}
-	if m.activityHandlers[job.ActivityId] == nil {
+	if m.workerActivities[job.ActivityId] == nil {
 		return errors.Error("can not find activity handler for job " + job.Id + " with activity " + job.ActivityId)
 	}
 	m.setCancellableJob(job.Id, m.generateInitalJobReport(job))
@@ -138,7 +207,7 @@ func (m *jobManager) generateInitalJobReport(job *proto.Job) *cancellableJobRepo
 			Result:                nil,
 			JobStartedTimeSeconds: int32(time.Now().Unix()),
 			WorkerId:              m.workerID,
-			Status:                proto.JobStatus_PENDING,
+			Status:                proto.JobStatus_DISPATCHED,
 		},
 	}
 }
@@ -158,8 +227,8 @@ func (m *jobManager) processJob(jobID string) {
 	jobCtx := jobReport.jobCtx
 	m.logger.Info(jobCtx, "process job "+jobID)
 	jobReport.Status = proto.JobStatus_RUNNING
-	activityHandler := m.activityHandlers[jobReport.Job.ActivityId]
-	result, err := activityHandler(jobCtx, jobReport.Job.Param)
+	workerActivity := m.workerActivities[jobReport.Job.ActivityId]
+	result, err := workerActivity.Handler()(jobCtx, jobReport.Job.Param)
 	// before statuses are set, check if job is cancelled
 	if m.isJobCancelled(jobID) {
 		m.logger.Info(jobCtx, "job is cancelled, ignoring job results and error")
@@ -185,6 +254,9 @@ func (m *jobManager) isJobCancelled(jobID string) bool {
 }
 
 func (m *jobManager) reportJobStatus(jobReport *cancellableJobReport) error {
+	if !m.IsReady() {
+		return errors.Error("client is not ready")
+	}
 	jobReportData, err := gproto.Marshal(jobReport)
 	if err != nil {
 		return err

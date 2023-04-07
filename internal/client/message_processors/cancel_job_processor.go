@@ -1,18 +1,18 @@
-package messagehandlers
+package message_processors
 
 import (
 	"context"
 
 	"github.com/dlshle/gommon/errors"
 	"github.com/dlshle/wflow/internal/client/job"
-	"github.com/dlshle/wflow/pkg/tcp"
+	"github.com/dlshle/wflow/pkg/protocol"
 	"github.com/dlshle/wflow/proto"
 
 	gproto "google.golang.org/protobuf/proto"
 )
 
-func CreateCancelJobProcessor(jobManager job.JobManager) tcp.MessageProcessor {
-	return func(ctx context.Context, gc tcp.GeneralConnection, m *proto.Message) error {
+func CreateCancelJobProcessor(jobManager job.JobManager) protocol.MessageProcessor {
+	return func(ctx context.Context, gc protocol.GeneralConnection, m *proto.Message) error {
 		job := &proto.Job{}
 		err := gproto.Unmarshal(m.Payload, job)
 		if err != nil {
