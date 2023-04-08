@@ -130,7 +130,7 @@ func (m *jobManager) WorkerInfo() *proto.Worker {
 		SystemStat:          utils.GetSystemStat(),
 		ActiveJobs:          m.JobIDs(),
 		SupportedActivities: m.SupportedActivities(),
-		IsReady:             m.IsReady(),
+		WorkerStatus:        m.getWorkerStatus(),
 	}
 }
 
@@ -153,6 +153,13 @@ func (m *jobManager) reportForWorkerReady() error {
 		Payload: workerData,
 	})
 	return err
+}
+
+func (m *jobManager) getWorkerStatus() proto.WorkerStatus {
+	if m.IsReady() {
+		return proto.WorkerStatus_ACTIVE
+	}
+	return proto.WorkerStatus_ONLINE
 }
 
 func (m *jobManager) IsReady() bool {

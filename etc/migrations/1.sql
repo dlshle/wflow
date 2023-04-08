@@ -10,9 +10,21 @@ CREATE TABLE IF NOT EXISTS workers (
 	PRIMARY KEY ( id )
 );
 
+CREATE TABLE IF NOT EXISTS activities (
+    id uuid,
+    payload bytea,
+	PRIMARY KEY ( id )
+);
+
 CREATE TABLE IF NOT EXISTS job_worker_mappings (
     id serial not null,
     job_id uuid,
+    worker_id uuid,
+	PRIMARY KEY ( id )
+);
+
+CREATE TABLE IF NOT EXISTS activity_worker_mappings (
+    id serial not null,
     activity_id uuid,
     worker_id uuid,
 	PRIMARY KEY ( id )

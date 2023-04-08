@@ -100,7 +100,10 @@ func (s *SQLPBEntityStore) TxPut(tx SQLTransactional, entity *PBEntity) (*PBEnti
 	}
 	err = CheckErrorForRowsAffected(result, "no row is affected")
 	return entity, err
+}
 
+func (s *SQLPBEntityStore) GetDB() SQLTransactional {
+	return s.Db
 }
 
 func (s *SQLPBEntityStore) WithTx(cb func(SQLTransactional) error) error {

@@ -33,6 +33,12 @@ enum JobStatus {
     CANCELLED = 5;
 }
 
+enum WorkerStatus {
+    OFFLINE = 0;
+    ONLINE = 1;
+    ACTIVE = 2;
+}
+
 message Message {
     string id = 1; // uuid
     // string worker_id = 2;
@@ -70,7 +76,7 @@ message Worker {
     repeated string active_jobs = 3;
     optional string connected_server = 4;
     repeated Activity supported_activities = 5;
-    bool is_ready = 6;
+    WorkerStatus worker_status = 6;
 }
 
 message Server {

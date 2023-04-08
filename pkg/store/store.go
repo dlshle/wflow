@@ -1,6 +1,7 @@
 package store
 
 type PBEntityStore interface {
+	GetDB() SQLTransactional
 	Get(id string) (*PBEntity, error)
 	TxGet(SQLTransactional, string) (*PBEntity, error)
 	TxBulkGet(tx SQLTransactional, ids []string) ([]*PBEntity, error)

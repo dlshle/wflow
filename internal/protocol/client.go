@@ -105,6 +105,7 @@ func (c *tcpClient) exchangeProtocolAndAttachServerConnection(conn gts.Connectio
 		Id:                  c.id,
 		SystemStat:          clientStat,
 		SupportedActivities: c.supportedActivities,
+		WorkerStatus:        proto.WorkerStatus_ONLINE,
 	}
 	clientInfoData, err := gproto.Marshal(clientInfo)
 	if err != nil {
