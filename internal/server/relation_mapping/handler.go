@@ -3,14 +3,30 @@ package relationmapping
 import (
 	"context"
 
+	"github.com/dlshle/gommon/errors"
 	"github.com/dlshle/gommon/logging"
+	"github.com/dlshle/wflow/internal/server/activity"
 	"github.com/dlshle/wflow/pkg/store"
 	"github.com/dlshle/wflow/proto"
 )
 
+type Handler interface {
+	TxUpdateWorkerJobs(ctx context.Context, tx store.SQLTransactional, worker *proto.Worker) error
+	TxUpdateWorkerActivities(ctx context.Context, tx store.SQLTransactional, worker *proto.Worker) error
+}
+
 type handler struct {
-	logger logging.Logger
-	store  *relationMappingStore
+	logger        logging.Logger
+	store         *relationMappingStore // this maintains worker-activity relation to tell which worker can handle which activity at the moment
+	activityStore activity.Store
+}
+
+func (h *handler) TxFindJobsByWorkerID(tx store.SQLTransactional, workerID string) ([]*proto.JobReport, error) {
+	return h.store.TxFindJobsByWorkerID(tx, workerID)
+}
+
+func (h *handler) TxFindWorkersByActivityID(tx store.SQLTransactional, activityID string) ([]*proto.Worker, error) {
+	return h.store.TxFindWorkersByActivityID(tx, activityID)
 }
 
 func (h *handler) TxUpdateWorkerJobs(ctx context.Context, tx store.SQLTransactional, worker *proto.Worker) error {
@@ -18,6 +34,10 @@ func (h *handler) TxUpdateWorkerJobs(ctx context.Context, tx store.SQLTransactio
 	jobIDs, err := h.store.TxGetJobIDsByWorkerID(tx, worker.Id)
 	if err != nil {
 		return err
+	}
+	err = h.txPutActivitiesOnActivityStore(tx, worker.SupportedActivities)
+	if err != nil {
+		return errors.Error("failed to put activities for worker " + worker.Id + " due to " + err.Error())
 	}
 	set := transformStringSliceToMap(jobIDs)
 	var toAdd []string
@@ -36,6 +56,16 @@ func (h *handler) TxUpdateWorkerJobs(ctx context.Context, tx store.SQLTransactio
 		}
 		if exists {
 			h.logger.Warnf(ctx, "[%s] job %s already exists", worker.Id, jobID)
+		}
+	}
+	return nil
+}
+
+func (h *handler) txPutActivitiesOnActivityStore(tx store.SQLTransactional, activities []*proto.Activity) error {
+	for _, activity := range activities {
+		_, err := h.activityStore.TxPut(tx, activity)
+		if err != nil {
+			return err
 		}
 	}
 	return nil

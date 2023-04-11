@@ -1,6 +1,8 @@
 package activity
 
 import (
+	"time"
+
 	"github.com/dlshle/wflow/pkg/store"
 	"github.com/dlshle/wflow/proto"
 	gproto "google.golang.org/protobuf/proto"
@@ -9,6 +11,7 @@ import (
 type Store interface {
 	Get(id string) (*proto.Activity, error)
 	TxGet(tx store.SQLTransactional, id string) (*proto.Activity, error)
+	Put(activity *proto.Activity) (*proto.Activity, error)
 	TxPut(tx store.SQLTransactional, activity *proto.Activity) (*proto.Activity, error)
 	TxDelete(tx store.SQLTransactional, id string) error
 }
@@ -41,12 +44,16 @@ func (s *activityStore) TxGet(tx store.SQLTransactional, id string) (*proto.Acti
 	return activity, err
 }
 
+func (s *activityStore) Put(activity *proto.Activity) (*proto.Activity, error) {
+	return s.TxPut(s.pbEntityStore.GetDB(), activity)
+}
+
 func (s *activityStore) TxPut(tx store.SQLTransactional, activity *proto.Activity) (*proto.Activity, error) {
 	activityData, err := gproto.Marshal(activity)
 	if err != nil {
 		return nil, err
 	}
-	updatedPBEntity, err := s.pbEntityStore.TxPut(tx, &store.PBEntity{activity.Id, activityData})
+	updatedPBEntity, err := s.pbEntityStore.TxPut(tx, &store.PBEntity{activity.Id, activityData, time.Now()})
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,8 @@
 package job
 
 import (
+	"time"
+
 	"github.com/dlshle/wflow/pkg/store"
 	"github.com/dlshle/wflow/proto"
 	gproto "google.golang.org/protobuf/proto"
@@ -9,8 +11,10 @@ import (
 type Store interface {
 	Get(id string) (*proto.JobReport, error)
 	TxGet(tx store.SQLTransactional, id string) (*proto.JobReport, error)
+	Put(jobReport *proto.JobReport) (*proto.JobReport, error)
 	TxPut(tx store.SQLTransactional, jobReport *proto.JobReport) (*proto.JobReport, error)
 	TxDelete(tx store.SQLTransactional, id string) error
+	WithTx(func(tx store.SQLTransactional) error) error
 }
 
 type jobStore struct {
@@ -31,6 +35,14 @@ func (s *jobStore) Get(id string) (*proto.JobReport, error) {
 	return s.TxGet(s.pbEntityStore.GetDB(), id)
 }
 
+func (s *jobStore) WithTx(cb func(tx store.SQLTransactional) error) error {
+	return s.pbEntityStore.WithTx(cb)
+}
+
+func (s *jobStore) Put(jobReport *proto.JobReport) (*proto.JobReport, error) {
+	return s.TxPut(s.pbEntityStore.GetDB(), jobReport)
+}
+
 func (s *jobStore) TxGet(tx store.SQLTransactional, id string) (*proto.JobReport, error) {
 	pbEntity, err := s.pbEntityStore.TxGet(tx, id)
 	if err != nil {
@@ -46,7 +58,7 @@ func (s *jobStore) TxPut(tx store.SQLTransactional, jobReport *proto.JobReport) 
 	if err != nil {
 		return nil, err
 	}
-	updatedPBEntity, err := s.pbEntityStore.TxPut(tx, &store.PBEntity{jobReport.Job.Id, jobReportData})
+	updatedPBEntity, err := s.pbEntityStore.TxPut(tx, &store.PBEntity{jobReport.Job.Id, jobReportData, time.Now()})
 	if err != nil {
 		return nil, err
 	}

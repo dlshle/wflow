@@ -17,6 +17,7 @@ type GeneralConnection interface {
 	Send(*proto.Message) error
 	Respond(m *proto.Message, status proto.Status, payload []byte) error
 	Request(*proto.Message) (*proto.Message, error)
+	OnDisconnected(func(GeneralConnection, error))
 	Close() error
 }
 
@@ -73,4 +74,10 @@ func (c *generalConnection) requestWithTimeout(timeoutInMs int, m *proto.Message
 		disposable()
 		return
 	}
+}
+
+func (c *generalConnection) OnDisconnected(cb func(GeneralConnection, error)) {
+	c.c.OnClose(func(err error) {
+		cb(c, err)
+	})
 }

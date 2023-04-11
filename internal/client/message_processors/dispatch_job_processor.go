@@ -5,7 +5,7 @@ import (
 
 	"github.com/dlshle/gommon/errors"
 	"github.com/dlshle/wflow/internal/client/job"
-	"github.com/dlshle/wflow/pkg/protocol"
+	"github.com/dlshle/wflow/internal/protocol"
 	"github.com/dlshle/wflow/proto"
 	gproto "google.golang.org/protobuf/proto"
 )

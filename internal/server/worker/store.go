@@ -1,6 +1,8 @@
 package worker
 
 import (
+	"time"
+
 	"github.com/dlshle/wflow/pkg/store"
 	"github.com/dlshle/wflow/proto"
 	gproto "google.golang.org/protobuf/proto"
@@ -9,8 +11,10 @@ import (
 type Store interface {
 	Get(id string) (*proto.Worker, error)
 	TxGet(tx store.SQLTransactional, id string) (*proto.Worker, error)
+	Put(worker *proto.Worker) (*proto.Worker, error)
 	TxPut(tx store.SQLTransactional, worker *proto.Worker) (*proto.Worker, error)
 	TxDelete(tx store.SQLTransactional, id string) error
+	WithTx(cb func(tx store.SQLTransactional) error) error
 }
 
 type workerStore struct {
@@ -41,12 +45,16 @@ func (s *workerStore) TxGet(tx store.SQLTransactional, id string) (*proto.Worker
 	return worker, err
 }
 
+func (s *workerStore) Put(worker *proto.Worker) (*proto.Worker, error) {
+	return s.TxPut(s.pbEntityStore.GetDB(), worker)
+}
+
 func (s *workerStore) TxPut(tx store.SQLTransactional, worker *proto.Worker) (*proto.Worker, error) {
 	workerData, err := gproto.Marshal(worker)
 	if err != nil {
 		return nil, err
 	}
-	updatedPBEntity, err := s.pbEntityStore.TxPut(tx, &store.PBEntity{worker.Id, workerData})
+	updatedPBEntity, err := s.pbEntityStore.TxPut(tx, &store.PBEntity{worker.Id, workerData, time.Now()})
 	if err != nil {
 		return nil, err
 	}
@@ -56,4 +64,8 @@ func (s *workerStore) TxPut(tx store.SQLTransactional, worker *proto.Worker) (*p
 
 func (s *workerStore) TxDelete(tx store.SQLTransactional, id string) error {
 	return s.pbEntityStore.TxDelete(tx, id)
+}
+
+func (s *workerStore) WithTx(cb func(tx store.SQLTransactional) error) error {
+	return s.pbEntityStore.WithTx(cb)
 }

@@ -1,18 +1,21 @@
 CREATE TABLE IF NOT EXISTS jobs (
     id uuid,
     payload bytea,
+    created_at timestamp default now(),
 	PRIMARY KEY ( id )
 );
 
 CREATE TABLE IF NOT EXISTS workers (
     id uuid,
     payload bytea,
+    created_at timestamp default now(),
 	PRIMARY KEY ( id )
 );
 
 CREATE TABLE IF NOT EXISTS activities (
     id uuid,
     payload bytea,
+    created_at timestamp default now(),
 	PRIMARY KEY ( id )
 );
 
