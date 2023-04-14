@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/dlshle/wflow/pkg/store"
+	wutil "github.com/dlshle/wflow/pkg/utils"
 	"github.com/dlshle/wflow/proto"
 	gproto "google.golang.org/protobuf/proto"
 )
@@ -53,6 +54,9 @@ func (s *workerStore) TxPut(tx store.SQLTransactional, worker *proto.Worker) (*p
 	workerData, err := gproto.Marshal(worker)
 	if err != nil {
 		return nil, err
+	}
+	if worker.Id == "" {
+		worker.Id = wutil.RandomUUID()
 	}
 	updatedPBEntity, err := s.pbEntityStore.TxPut(tx, &store.PBEntity{worker.Id, workerData, time.Now()})
 	if err != nil {

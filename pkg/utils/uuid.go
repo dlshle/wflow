@@ -7,6 +7,10 @@ import (
 	"github.com/gofrs/uuid"
 )
 
+func GenerateUUIDOnString(str string) string {
+	return uuid.NewV5(uuid.NamespaceURL, str).String()
+}
+
 func RandomUUID() string {
 	v4UUID, err := uuid.NewV4()
 	if err == nil {

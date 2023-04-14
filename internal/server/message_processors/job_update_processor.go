@@ -17,7 +17,7 @@ func CreateJobUpdateProcessor(manager worker.Manager, jobHandler job.Handler) pr
 		if err != nil {
 			return err
 		}
-		err = jobHandler.Put(job)
+		_, err = jobHandler.Put(job)
 		if err != nil {
 			return err
 		}

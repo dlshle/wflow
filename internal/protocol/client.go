@@ -33,9 +33,10 @@ type tcpClient struct {
 	supportedActivities []*proto.Activity
 	connectedServer     *proto.Server
 	serverConn          ServerConnection
+	onConnRecovered     func(ServerConnection)
 }
 
-func NewTCPClient(id, address string, port int, messageHandler MessageHandler, supportedActivities []*proto.Activity) TCPClient {
+func NewTCPClient(id, address string, port int, messageHandler MessageHandler, supportedActivities []*proto.Activity, onConnRecovered func(ServerConnection)) TCPClient {
 	c := &tcpClient{
 		ctx:                 logging.WrapCtx(context.Background(), "client_id", id),
 		id:                  id,
@@ -44,6 +45,7 @@ func NewTCPClient(id, address string, port int, messageHandler MessageHandler, s
 		notificationEmitter: notification.New[*proto.Message](DefaultMaxNotificationListeners),
 		asyncPool:           async.NewAsyncPool(id, DefaultMaxPoolSize, DefaultMaxAsyncPoolWorkerSize),
 		supportedActivities: supportedActivities,
+		onConnRecovered:     onConnRecovered,
 	}
 	c.init()
 	return c
@@ -182,9 +184,10 @@ func (c *tcpClient) doHealthCheck() error {
 func (c *tcpClient) serverReconnectingLoop() {
 	c.logger.Info(c.ctx, "initiating server reconnecting loop")
 	for c.serverConn == nil {
-		_, err := c.Connect()
+		conn, err := c.Connect()
 		if err == nil {
 			c.logger.Info(c.ctx, "server is reconnected")
+			c.onConnRecovered(conn)
 			return
 		}
 		c.logger.Info(c.ctx, "server reconnection failed due to "+err.Error())

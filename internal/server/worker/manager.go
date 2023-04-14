@@ -25,7 +25,11 @@ type Manager interface {
 	GetConnectedWorkers() (workers []protocol.WorkerConnection)
 	DisconnectWorker(ctx context.Context, workerID string) error
 	HandleWorkerUpdate(ctx context.Context, worker *proto.Worker) error
+	QueryWorkerFromDB(ctx context.Context, workerID string) (*proto.Worker, error)
 	QueryRemoteWorker(ctx context.Context, workerID string) (*proto.Worker, error)
+	GetJob(ctx context.Context, jobID string) (*proto.JobReport, error)
+	DispatchJob(ctx context.Context, activityID, workerID string, param []byte) (*proto.JobReport, error)
+	CancelJob(ctx context.Context, jobID string) error
 }
 
 func NewManager(workerStore Store, relationMappingHandler relationmapping.Handler, jobHandler job.Handler, activityHandler activity.Handler) Manager {
@@ -174,4 +178,86 @@ func (m *manager) QueryRemoteWorker(ctx context.Context, workerID string) (*prot
 	}
 	err = gproto.Unmarshal(resp.Payload, workerHolder)
 	return workerHolder, err
+}
+
+func (m *manager) QueryWorkerFromDB(ctx context.Context, workerID string) (*proto.Worker, error) {
+	return m.workerStore.Get(workerID)
+}
+
+func (m *manager) DispatchJob(ctx context.Context, activityID, workerID string, param []byte) (*proto.JobReport, error) {
+	ctx = logging.WrapCtx(ctx, "activityID", activityID)
+	ctx = logging.WrapCtx(ctx, "workerID", workerID)
+	// TODO: need to support job dispatching in offline mode
+	workerConnection := m.GetWorkerConnection(workerID)
+	if workerConnection == nil {
+		return nil, errors.Error("worker " + workerID + " is not connected")
+	}
+	job := &proto.Job{
+		ActivityId: activityID,
+		Param:      param,
+	}
+	jobReport := &proto.JobReport{
+		Job:      job,
+		WorkerId: workerID,
+		Status:   proto.JobStatus_PENDING,
+	}
+	jobReport, err := m.jobHandler.Put(jobReport)
+	if err != nil {
+		return nil, err
+	}
+	dispatchJobRequestData, err := gproto.Marshal(jobReport.Job)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := workerConnection.Request(&proto.Message{
+		Id:      wutils.RandomUUID(),
+		Type:    proto.Type_DISPATCH_JOB,
+		Payload: dispatchJobRequestData,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp.Status != proto.Status_OK {
+		m.logger.Errorf(ctx, "[DispatchJob] failed to dispatch job %s due to %s", jobReport.Job.Id, resp.Status.String())
+		return nil, errors.Error("failed to dispatch job, remote respond with: " + string(resp.Payload))
+	}
+	return jobReport, err
+}
+
+func (m *manager) GetJob(ctx context.Context, jobID string) (*proto.JobReport, error) {
+	return m.jobHandler.Get(jobID)
+}
+
+func (m *manager) CancelJob(ctx context.Context, jobID string) error {
+	job, err := m.jobHandler.Get(jobID)
+	if err != nil {
+		return err
+	}
+	if job.Status == proto.JobStatus_CANCELLED {
+		return errors.Error("job " + jobID + " is already cancelled")
+	}
+	if job.Status == proto.JobStatus_FAILED || job.Status == proto.JobStatus_SUCCESS {
+		return errors.Error("job " + jobID + " is already finished")
+	}
+	workerConnection := m.GetWorkerConnection(job.WorkerId)
+	if workerConnection == nil {
+		return errors.Error("worker " + job.WorkerId + " is not connected")
+	}
+	cancelJobRequestData, err := gproto.Marshal(&proto.Job{Id: jobID})
+	if err != nil {
+		return err
+	}
+	resp, err := workerConnection.Request(&proto.Message{
+		Id:      wutils.RandomUUID(),
+		Type:    proto.Type_CANCEL_JOB,
+		Payload: cancelJobRequestData,
+	})
+	if err != nil {
+		return err
+	}
+	if resp.Status != proto.Status_OK {
+		m.logger.Errorf(ctx, "[CancelJob] failed to cancel job %s due to %s", jobID, resp.Status.String())
+		return errors.Error("failed to cancel job, remote respond with: " + string(resp.Payload))
+	}
+	return nil
 }

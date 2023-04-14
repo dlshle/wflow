@@ -3,9 +3,17 @@ module github.com/dlshle/wflow
 go 1.18
 
 require (
+	github.com/dlshle/aghs v1.4.60
 	github.com/dlshle/gommon v0.4.71
 	github.com/dlshle/gts v0.0.2
 	google.golang.org/grpc v1.53.0
+)
+
+require (
+	github.com/andybalholm/brotli v1.0.4 // indirect
+	github.com/klauspost/compress v1.14.1 // indirect
+	github.com/valyala/bytebufferpool v1.0.0 // indirect
+	github.com/valyala/fasthttp v1.33.0 // indirect
 )
 
 require (
@@ -17,5 +25,5 @@ require (
 	golang.org/x/sys v0.4.0 // indirect
 	golang.org/x/text v0.6.0 // indirect
 	google.golang.org/genproto v0.0.0-20230110181048-76db0878b65f // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
+	google.golang.org/protobuf v1.28.1
 )

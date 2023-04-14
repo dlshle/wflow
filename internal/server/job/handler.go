@@ -7,7 +7,7 @@ import (
 
 type Handler interface {
 	Get(id string) (*proto.JobReport, error)
-	Put(jobReport *proto.JobReport) error
+	Put(jobReport *proto.JobReport) (*proto.JobReport, error)
 }
 
 type jobHandler struct {
@@ -19,7 +19,6 @@ func (h *jobHandler) Get(id string) (*proto.JobReport, error) {
 	return h.store.Get(id)
 }
 
-func (h *jobHandler) Put(jobReport *proto.JobReport) (err error) {
-	_, err = h.store.Put(jobReport)
-	return
+func (h *jobHandler) Put(jobReport *proto.JobReport) (*proto.JobReport, error) {
+	return h.store.Put(jobReport)
 }

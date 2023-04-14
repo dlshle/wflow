@@ -94,3 +94,19 @@ func (m *relationMappingStore) TxBulkDeleteActivityMappingsByWorkerID(tx store.S
 	_, err := tx.Exec("DELETE FROM activity_worker_mappings WHERE worker_id = $1 AND activity_id IN "+store.MakeInQueryClause(activitiesIDs), workerID)
 	return err
 }
+
+func (m *relationMappingStore) ListAllActiveActivities() ([]*proto.Activity, error) {
+	var pbEntities []store.PBEntity
+	err := m.db.Select(&pbEntities, "SELECT * FROM activities WHERE id in (SELECT DISTINCT(activity_id) FROM activity_worker_mappings)")
+	if err != nil {
+		return nil, err
+	}
+	activities := make([]*proto.Activity, len(pbEntities), len(pbEntities))
+	for i, entity := range pbEntities {
+		err = gproto.Unmarshal(entity.Payload, activities[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return activities, nil
+}

@@ -235,6 +235,7 @@ func (m *jobManager) processJob(jobID string) {
 	m.logger.Info(jobCtx, "process job "+jobID)
 	jobReport.Status = proto.JobStatus_RUNNING
 	workerActivity := m.workerActivities[jobReport.Job.ActivityId]
+	m.reportJobStatus(jobReport) // we can do this in async
 	result, err := workerActivity.Handler()(jobCtx, jobReport.Job.Param)
 	// before statuses are set, check if job is cancelled
 	if m.isJobCancelled(jobID) {

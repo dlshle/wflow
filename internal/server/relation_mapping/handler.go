@@ -11,6 +11,9 @@ import (
 )
 
 type Handler interface {
+	FindJobsByWorkerID(workerID string) ([]*proto.JobReport, error)
+	FindWorkersByActivityID(activityID string) ([]*proto.Worker, error)
+	ListAllActiveActivities() ([]*proto.Activity, error)
 	TxUpdateWorkerJobs(ctx context.Context, tx store.SQLTransactional, worker *proto.Worker) error
 	TxUpdateWorkerActivities(ctx context.Context, tx store.SQLTransactional, worker *proto.Worker) error
 }
@@ -21,12 +24,16 @@ type handler struct {
 	activityStore activity.Store
 }
 
-func (h *handler) TxFindJobsByWorkerID(tx store.SQLTransactional, workerID string) ([]*proto.JobReport, error) {
-	return h.store.TxFindJobsByWorkerID(tx, workerID)
+func (h *handler) ListAllActiveActivities() ([]*proto.Activity, error) {
+	return h.store.ListAllActiveActivities()
 }
 
-func (h *handler) TxFindWorkersByActivityID(tx store.SQLTransactional, activityID string) ([]*proto.Worker, error) {
-	return h.store.TxFindWorkersByActivityID(tx, activityID)
+func (h *handler) FindJobsByWorkerID(workerID string) ([]*proto.JobReport, error) {
+	return h.store.TxFindJobsByWorkerID(h.store.db, workerID)
+}
+
+func (h *handler) FindWorkersByActivityID(activityID string) ([]*proto.Worker, error) {
+	return h.store.TxFindWorkersByActivityID(h.store.db, activityID)
 }
 
 func (h *handler) TxUpdateWorkerJobs(ctx context.Context, tx store.SQLTransactional, worker *proto.Worker) error {
