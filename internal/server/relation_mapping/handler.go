@@ -24,6 +24,14 @@ type handler struct {
 	activityStore activity.Store
 }
 
+func NewHandler(store *relationMappingStore, activityStore activity.Store) Handler {
+	return &handler{
+		logger:        logging.GlobalLogger.WithPrefix("[RelationMappingHandler]"),
+		store:         store,
+		activityStore: activityStore,
+	}
+}
+
 func (h *handler) ListAllActiveActivities() ([]*proto.Activity, error) {
 	return h.store.ListAllActiveActivities()
 }

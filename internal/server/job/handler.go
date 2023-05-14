@@ -15,6 +15,10 @@ type jobHandler struct {
 	relationMappingHandler relationmapping.Handler
 }
 
+func NewHandler(store Store, relationMappingHandler relationmapping.Handler) Handler {
+	return &jobHandler{store, relationMappingHandler}
+}
+
 func (h *jobHandler) Get(id string) (*proto.JobReport, error) {
 	return h.store.Get(id)
 }

@@ -11,6 +11,10 @@ type Handler interface {
 	TxPut(tx store.SQLTransactional, activity *proto.Activity) (*proto.Activity, error)
 }
 
+func NewHandler(store Store) Handler {
+	return &handler{store}
+}
+
 type handler struct {
 	store Store
 }

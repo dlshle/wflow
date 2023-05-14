@@ -1,4 +1,4 @@
-package messageprocessors
+package message_processors
 
 import (
 	"context"

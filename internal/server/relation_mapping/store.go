@@ -11,6 +11,10 @@ type relationMappingStore struct {
 	db *sqlx.DB
 }
 
+func NewRelationMappingStore(db *sqlx.DB) *relationMappingStore {
+	return &relationMappingStore{db}
+}
+
 func (m *relationMappingStore) TxFindJobsByWorkerID(tx store.SQLTransactional, workerID string) ([]*proto.JobReport, error) {
 	var pbEntities []store.PBEntity
 	err := tx.Select(&pbEntities, "SELECT * FROM jobs WHERE id IN (SELECT job_id FROM job_worker_mappings WHERE worker_id = $1)", workerID)

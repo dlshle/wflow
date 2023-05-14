@@ -23,6 +23,7 @@ type Manager interface {
 	HandleWorkerConnectionDisconnected(ctx context.Context, workerID string)
 	HandleWorkerConnnection(ctx context.Context, c protocol.WorkerConnection)
 	GetConnectedWorkers() (workers []protocol.WorkerConnection)
+	GetWorkerByIDs(ids []string) (workers []*proto.Worker, err error)
 	DisconnectWorker(ctx context.Context, workerID string) error
 	HandleWorkerUpdate(ctx context.Context, worker *proto.Worker) error
 	QueryWorkerFromDB(ctx context.Context, workerID string) (*proto.Worker, error)
@@ -111,6 +112,24 @@ func (m *manager) GetConnectedWorkers() (workers []protocol.WorkerConnection) {
 		for _, worker := range m.connectedWorkers {
 			workers = append(workers, worker)
 		}
+	})
+	return
+}
+
+func (m *manager) GetWorkerByIDs(ids []string) (workers []*proto.Worker, err error) {
+	if len(ids) == 0 {
+		return []*proto.Worker{}, nil
+	}
+	workers = make([]*proto.Worker, 0)
+	err = m.workerStore.WithTx(func(tx store.SQLTransactional) error {
+		for _, id := range ids {
+			worker, err := m.workerStore.TxGet(tx, id)
+			if err != nil {
+				return err
+			}
+			workers = append(workers, worker)
+		}
+		return nil
 	})
 	return
 }

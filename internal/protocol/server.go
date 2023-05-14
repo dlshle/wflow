@@ -16,10 +16,12 @@ import (
 
 type TCPServer interface {
 	Start() error
+	StartAsync()
 	Broadcast(*proto.Message) error
 	ConnectedWorkerIDs() []string
 	RequestWorker(string, *proto.Message) (*proto.Message, error)
 	Close() error
+	Wait() error
 }
 
 type tcpServer struct {
@@ -33,6 +35,8 @@ type tcpServer struct {
 	asyncPool           async.AsyncPool
 	startedTime         time.Time
 	rwLock              *sync.RWMutex
+	lastErr             error
+	stopEventWaiter     *async.WaitLock
 }
 
 func NewTCPServer(serverID, address string, port int, messageHandler MessageHandler) TCPServer {
@@ -53,7 +57,15 @@ func NewTCPServer(serverID, address string, port int, messageHandler MessageHand
 
 func (s *tcpServer) Start() error {
 	s.startedTime = time.Now()
-	return s.tcpServer.Start()
+	s.stopEventWaiter = async.NewWaitLock()
+	s.lastErr = s.tcpServer.Start()
+	return s.lastErr
+}
+
+func (s *tcpServer) StartAsync() {
+	s.asyncPool.Execute(func() {
+		s.Start()
+	})
 }
 
 func (s *tcpServer) ConnectedWorkerIDs() []string {
@@ -77,11 +89,24 @@ func (s *tcpServer) RequestWorker(workerID string, m *proto.Message) (*proto.Mes
 func (s *tcpServer) Close() error {
 	err := s.tcpServer.Stop()
 	s.rwLock.Lock()
+	s.lastErr = err
 	for k := range s.connectedWorkers {
 		delete(s.connectedWorkers, k)
 	}
+	if s.stopEventWaiter == nil {
+		s.stopEventWaiter = async.NewWaitLock()
+	}
+	s.stopEventWaiter.Open()
 	s.rwLock.Unlock()
 	return err
+}
+
+func (s *tcpServer) Wait() error {
+	if s.stopEventWaiter == nil {
+		return errors.Error("server isn't started")
+	}
+	s.stopEventWaiter.Wait()
+	return s.lastErr
 }
 
 func (s *tcpServer) init() {

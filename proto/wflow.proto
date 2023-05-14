@@ -90,3 +90,15 @@ message SystemStat {
     int32 available_memory_in_bytes = 3;
     int32 total_memory_in_bytes = 4;
 }
+
+message AdminWorkersResponse {
+    map<string, Worker> workers = 1;
+}
+
+message AdminJobsResponse {
+    map<string, JobReport> reports = 1;
+}
+
+message AdminActivitiesResponse {
+    map<string, Activity> activities = 1;
+}
