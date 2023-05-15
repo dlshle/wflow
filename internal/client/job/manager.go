@@ -135,9 +135,7 @@ func (m *jobManager) WorkerInfo() *proto.Worker {
 }
 
 func (m *jobManager) InitReportingServer(sc protocol.ServerConnection) error {
-	m.withWrite(func() {
-		m.serverConn = sc
-	})
+	m.serverConn = sc
 	return m.reportForWorkerReady()
 }
 

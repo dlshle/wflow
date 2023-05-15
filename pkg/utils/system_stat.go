@@ -1,9 +1,7 @@
 package utils
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -18,26 +16,13 @@ type memory struct {
 }
 
 func readMemoryStats() memory {
-	file, err := os.Open("/proc/meminfo")
-	if err != nil {
-		panic(err)
+	memStats := &runtime.MemStats{}
+	runtime.ReadMemStats(memStats)
+	return memory{
+		MemTotal:     int(memStats.TotalAlloc),
+		MemFree:      int(memStats.HeapIdle),
+		MemAvailable: int(memStats.HeapSys),
 	}
-	defer file.Close()
-	bufio.NewScanner(file)
-	scanner := bufio.NewScanner(file)
-	res := memory{}
-	for scanner.Scan() {
-		key, value := parseLine(scanner.Text())
-		switch key {
-		case "MemTotal":
-			res.MemTotal = value
-		case "MemFree":
-			res.MemFree = value
-		case "MemAvailable":
-			res.MemAvailable = value
-		}
-	}
-	return res
 }
 
 func parseLine(raw string) (key string, value int) {

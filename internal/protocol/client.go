@@ -37,6 +37,7 @@ type tcpClient struct {
 }
 
 func NewTCPClient(id, address string, port int, messageHandler MessageHandler, supportedActivities []*proto.Activity, onConnRecovered func(ServerConnection)) TCPClient {
+	rawClient := gts.NewTCPClient(address, port)
 	c := &tcpClient{
 		ctx:                 logging.WrapCtx(context.Background(), "client_id", id),
 		id:                  id,
@@ -46,6 +47,7 @@ func NewTCPClient(id, address string, port int, messageHandler MessageHandler, s
 		asyncPool:           async.NewAsyncPool(id, DefaultMaxPoolSize, DefaultMaxAsyncPoolWorkerSize),
 		supportedActivities: supportedActivities,
 		onConnRecovered:     onConnRecovered,
+		tcpClient:           rawClient,
 	}
 	c.init()
 	return c

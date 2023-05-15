@@ -59,6 +59,7 @@ func (s *tcpServer) Start() error {
 	s.startedTime = time.Now()
 	s.stopEventWaiter = async.NewWaitLock()
 	s.lastErr = s.tcpServer.Start()
+	s.logger.Errorf(s.ctx, "server %s stopped with error: %v", s.id, s.lastErr)
 	return s.lastErr
 }
 
@@ -70,7 +71,7 @@ func (s *tcpServer) StartAsync() {
 
 func (s *tcpServer) ConnectedWorkerIDs() []string {
 	s.rwLock.RLock()
-	defer s.rwLock.Unlock()
+	defer s.rwLock.RUnlock()
 	res := make([]string, 0)
 	for k := range s.connectedWorkers {
 		res = append(res, k)
@@ -111,13 +112,16 @@ func (s *tcpServer) Wait() error {
 
 func (s *tcpServer) init() {
 	s.tcpServer.OnClientConnected(func(c gts.Connection) {
+		s.logger.Info(s.ctx, "hello?")
+		ctx := logging.WrapCtx(s.ctx, "address", c.Address())
+		s.logger.Infof(ctx, "client %s connected", c.Address())
 		// flow to get
 		workerConn, err := s.exchangeProtocol(c)
 		if err != nil {
+			s.logger.Errorf(ctx, "failed to exchange protocol with client %s: %s", c.Address(), err.Error())
 			c.Close()
 			return
 		}
-		ctx := logging.WrapCtx(s.ctx, "address", c.Address())
 		ctx = logging.WrapCtx(ctx, "worker", workerConn.ID())
 
 		s.asyncPool.Execute(c.ReadLoop)
@@ -153,7 +157,7 @@ func (s *tcpServer) Broadcast(m *proto.Message) error {
 
 func (s *tcpServer) getConnectedWorker(id string) WorkerConnection {
 	s.rwLock.RLock()
-	defer s.rwLock.Unlock()
+	defer s.rwLock.RUnlock()
 	return s.connectedWorkers[id]
 }
 

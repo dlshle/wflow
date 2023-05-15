@@ -1,8 +1,10 @@
 package config
 
 import (
+	"context"
 	"os"
 
+	"github.com/dlshle/gommon/logging"
 	"gopkg.in/yaml.v2"
 )
 
@@ -10,6 +12,7 @@ type ServerConfig struct {
 	Database struct {
 		Host     string `yaml:"host"`
 		Port     int    `yaml:"port"`
+		Database string `yaml:"database"`
 		Username string `yaml:"username"`
 		Password string `yaml:"password"`
 	} `yaml:"database"`
@@ -24,6 +27,7 @@ func LoadConfig(path string) (ServerConfig, error) {
 	if err != nil {
 		return ServerConfig{}, err
 	}
+	logging.GlobalLogger.Infof(context.Background(), "config %v loaded", config)
 	return config, nil
 }
 

@@ -1,22 +1,34 @@
 package api
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/dlshle/aghs/server"
+	"github.com/dlshle/gommon/logging"
 	"github.com/dlshle/gommon/utils"
 	"github.com/dlshle/wflow/internal/protocol"
 	"github.com/dlshle/wflow/internal/server/activity"
 	"github.com/dlshle/wflow/internal/server/config"
 	"github.com/dlshle/wflow/internal/server/job"
+	"github.com/dlshle/wflow/internal/server/migration"
 	relationmapping "github.com/dlshle/wflow/internal/server/relation_mapping"
 	"github.com/dlshle/wflow/internal/server/service"
 	"github.com/dlshle/wflow/internal/server/worker"
 	"github.com/dlshle/wflow/pkg/store"
+	wutils "github.com/dlshle/wflow/pkg/utils"
 	"github.com/jmoiron/sqlx"
+	_ "github.com/lib/pq"
 )
 
 func Entry(serverID, configPath string) (err error) {
+	defer func() error {
+		err = wutils.HandlePanic(err)
+		if err != nil {
+			logging.GlobalLogger.Errorf(context.Background(), "server panic encountered %s", err.Error())
+		}
+		return err
+	}()
 	var (
 		cfg config.ServerConfig
 		db  *sqlx.DB
@@ -67,10 +79,24 @@ func runServers(httpServer server.Server, tcpServer protocol.TCPServer) (err err
 	httpErrChan := make(chan error, 1)
 	tcpErrChan := make(chan error, 1)
 	go func() {
-		httpErrChan <- httpServer.Start()
+		defer func() {
+			err = wutils.HandlePanic(err)
+			if err != nil {
+				logging.GlobalLogger.Errorf(context.Background(), "http server panic encountered %s", err.Error())
+			}
+			httpErrChan <- err
+		}()
+		err = httpServer.Start()
 	}()
 	go func() {
-		tcpErrChan <- tcpServer.Start()
+		defer func() {
+			err = wutils.HandlePanic(err)
+			if err != nil {
+				logging.GlobalLogger.Errorf(context.Background(), "tcp server panic encountered %s", err.Error())
+			}
+			tcpErrChan <- err
+		}()
+		err = tcpServer.Start()
 	}()
 	defer close(httpErrChan)
 	defer close(tcpErrChan)
@@ -84,28 +110,28 @@ func runServers(httpServer server.Server, tcpServer protocol.TCPServer) (err err
 
 func setupDatabase(cfg config.ServerConfig) (db *sqlx.DB, err error) {
 	err = utils.ProcessWithErrors(func() error {
-		db, err = sqlx.Open("postgres", getDatabaseConnectionString(cfg, "postgres"))
+		db, err = sqlx.Open("postgres", getDatabaseConnectionString(cfg))
 		return err
 	}, func() error {
-		return store.ExecMigration(db, "migrations")
+		return store.ExecMigrationScripts(db, migration.Versions)
 	})
 	return
 }
 
-func getDatabaseConnectionString(cfg config.ServerConfig, dbName string) string {
+func getDatabaseConnectionString(cfg config.ServerConfig) string {
 	fullDBUri := fmt.Sprintf("%s:%d", cfg.Database.Host, cfg.Database.Port)
-	return fmt.Sprintf("postgresql://%s:%s@%s/defaultdb?database=%s", cfg.Database.Username, cfg.Database.Password,
-		fullDBUri, dbName)
+	return fmt.Sprintf("postgresql://%s:%s@%s/%s?sslmode=disable", cfg.Database.Username, cfg.Database.Password,
+		fullDBUri, cfg.Database.Database)
 }
 
 func setupWorkerDependencies(cfg config.ServerConfig, relationMappingHandler relationmapping.Handler, jobHandler job.Handler, activityHandler activity.Handler) (workerStore worker.Store, manager worker.Manager, err error) {
-	workerStore, err = worker.NewStore(getDatabaseConnectionString(cfg, "workers"))
+	workerStore, err = worker.NewStore(getDatabaseConnectionString(cfg))
 	manager = worker.NewManager(workerStore, relationMappingHandler, jobHandler, activityHandler)
 	return
 }
 
 func setupActivityDependencies(cfg config.ServerConfig) (activityStore activity.Store, activityHandler activity.Handler, err error) {
-	activityStore, err = activity.NewStore(getDatabaseConnectionString(cfg, "activities"))
+	activityStore, err = activity.NewStore(getDatabaseConnectionString(cfg))
 	if err != nil {
 		return
 	}
@@ -114,7 +140,7 @@ func setupActivityDependencies(cfg config.ServerConfig) (activityStore activity.
 }
 
 func setupJobsDependencies(cfg config.ServerConfig, relationMappingHandler relationmapping.Handler) (store job.Store, handler job.Handler, err error) {
-	store, err = job.NewStore(getDatabaseConnectionString(cfg, "jobs"))
+	store, err = job.NewStore(getDatabaseConnectionString(cfg))
 	if err != nil {
 		return
 	}

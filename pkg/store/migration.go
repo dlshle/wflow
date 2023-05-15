@@ -17,7 +17,7 @@ func ExecMigration(db *sqlx.DB, scriptPath string) error {
 	if err != nil {
 		return err
 	}
-	return execMigration(db, scripts)
+	return ExecMigrationScripts(db, scripts)
 }
 
 func loadMigrationScripts(scriptDir string) (scriptsByVersions []string, err error) {
@@ -80,7 +80,7 @@ func readTextFile(path string) (string, error) {
 	return builder.String(), nil
 }
 
-func execMigration(db *sqlx.DB, migrationScripts []string) error {
+func ExecMigrationScripts(db *sqlx.DB, migrationScripts []string) error {
 	for _, migration := range migrationScripts {
 		_, err := db.Exec(migration)
 		if err != nil {
