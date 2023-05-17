@@ -54,6 +54,13 @@ func NewTCPClient(id, address string, port int, messageHandler MessageHandler, s
 }
 
 func (c *tcpClient) init() {
+	c.tcpClient.OnDisconnected(func(err error) {
+		c.logger.Warn(c.ctx, "server connection is closed")
+		c.serverConn = nil
+	})
+	c.tcpClient.OnError(func(err error) {
+		c.logger.Error(c.ctx, "server connection encountered error "+err.Error())
+	})
 	c.tcpClient.OnConnectionEstablished(func(conn gts.Connection) {
 		c.ctx = logging.WrapCtx(c.ctx, "server_ip", conn.Address())
 		err := c.exchangeProtocolAndAttachServerConnection(conn)
@@ -62,21 +69,16 @@ func (c *tcpClient) init() {
 			conn.Close()
 			return
 		}
-		c.asyncPool.Execute(conn.ReadLoop)
 		byteMessageHandler := createHandler(c.messageHandler, c.notificationEmitter)
 		conn.OnMessage(func(b []byte) {
 			c.asyncPool.Execute(func() {
 				byteMessageHandler(c.ctx, c.serverConn, b)
 			})
 		})
+		c.logger.Infof(c.ctx, "client %s is connected to server %s, client srtarting read loop", c.id, c.connectedServer.Id)
+		c.asyncPool.Execute(conn.ReadLoop)
+
 		c.healthCheckRoutine()
-	})
-	c.tcpClient.OnDisconnected(func(err error) {
-		c.logger.Warn(c.ctx, "server connection is closed")
-		c.serverConn = nil
-	})
-	c.tcpClient.OnError(func(err error) {
-		c.logger.Error(c.ctx, "server connection encountered error "+err.Error())
 	})
 }
 
@@ -126,6 +128,7 @@ func (c *tcpClient) exchangeProtocolAndAttachServerConnection(conn gts.Connectio
 	}
 	err = conn.Write(clientInfoRequestData)
 	if err != nil {
+		c.logger.Info(c.ctx, "failed to send initial client info request to server due to "+err.Error())
 		return err
 	}
 	// waiting for server response with server info
@@ -148,11 +151,13 @@ func (c *tcpClient) exchangeProtocolAndAttachServerConnection(conn gts.Connectio
 		return err
 	}
 	c.connectedServer = serverInfo
-	c.serverConn = NewServerConnection(serverInfo.Id, NewGeneralConnection(conn, DefaultRequestTimeoutMS))
+	c.serverConn = NewServerConnection(serverInfo.Id, NewGeneralConnection(conn, c.notificationEmitter, DefaultRequestTimeoutMS))
+	c.logger.Infof(c.ctx, "successfully exchanged protocol with server %s", serverInfo.Id)
 	return nil
 }
 
 func (c *tcpClient) healthCheckRoutine() {
+	time.Sleep(time.Second)
 	timer := ctimer.New(time.Second*30, c.healthCheck)
 	timer.WithAsyncPool(c.asyncPool)
 	timer.Repeat()
@@ -185,14 +190,21 @@ func (c *tcpClient) doHealthCheck() error {
 
 func (c *tcpClient) serverReconnectingLoop() {
 	c.logger.Info(c.ctx, "initiating server reconnecting loop")
+	consecutiveFailures := 0
 	for c.serverConn == nil {
 		conn, err := c.Connect()
 		if err == nil {
 			c.logger.Info(c.ctx, "server is reconnected")
 			c.onConnRecovered(conn)
+			consecutiveFailures = 0
+			return
+		}
+		if consecutiveFailures > 10 {
+			c.logger.Errorf(c.ctx, "server reconnection failed due to %d consecutive failures", consecutiveFailures)
 			return
 		}
 		c.logger.Info(c.ctx, "server reconnection failed due to "+err.Error())
-		time.Sleep(500)
+		time.Sleep(5000)
+		consecutiveFailures++
 	}
 }

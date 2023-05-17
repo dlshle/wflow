@@ -13,7 +13,8 @@ func main() {
 		configPath string
 		serverID   string
 	)
-	flag.StringVar(&configPath, "config", "./etc/config.yaml", "path to the server config file")
+	// flag.StringVar(&configPath, "config", "./etc/config.yaml", "path to the server config file")
+	flag.StringVar(&configPath, "config", "../../etc/server.yaml", "path to the server config file")
 	flag.StringVar(&serverID, "sid", "server", "server id")
 	flag.Parse()
 

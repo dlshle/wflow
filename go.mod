@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/dlshle/aghs v1.4.60
-	github.com/dlshle/gommon v0.4.71
+	github.com/dlshle/gommon v0.4.73
 	github.com/dlshle/gts v0.0.3
 	google.golang.org/grpc v1.53.0
 )

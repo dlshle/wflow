@@ -90,11 +90,17 @@ func (m *relationMappingStore) TxGetJobIDsByWorkerID(tx store.SQLTransactional, 
 }
 
 func (m *relationMappingStore) TxBulkDeleteJobMappingsByWorkerID(tx store.SQLTransactional, jobIDs []string, workerID string) error {
+	if len(jobIDs) == 0 {
+		return nil
+	}
 	_, err := tx.Exec("DELETE FROM job_worker_mappings WHERE worker_id = $1 AND job_id IN "+store.MakeInQueryClause(jobIDs), workerID)
 	return err
 }
 
 func (m *relationMappingStore) TxBulkDeleteActivityMappingsByWorkerID(tx store.SQLTransactional, activitiesIDs []string, workerID string) error {
+	if len(activitiesIDs) == 0 {
+		return nil
+	}
 	_, err := tx.Exec("DELETE FROM activity_worker_mappings WHERE worker_id = $1 AND activity_id IN "+store.MakeInQueryClause(activitiesIDs), workerID)
 	return err
 }

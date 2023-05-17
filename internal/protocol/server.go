@@ -19,7 +19,7 @@ type TCPServer interface {
 	StartAsync()
 	Broadcast(*proto.Message) error
 	ConnectedWorkerIDs() []string
-	RequestWorker(string, *proto.Message) (*proto.Message, error)
+	RequestWorkers(string, *proto.Message) (map[string]*proto.Message, error)
 	Close() error
 	Wait() error
 }
@@ -30,7 +30,7 @@ type tcpServer struct {
 	id                  string
 	logger              logging.Logger
 	messageHandler      MessageHandler
-	connectedWorkers    map[string]WorkerConnection
+	connectedWorkers    map[string](map[string]WorkerConnection)
 	notificationEmitter notification.WRNotificationEmitter[*proto.Message]
 	asyncPool           async.AsyncPool
 	startedTime         time.Time
@@ -46,7 +46,7 @@ func NewTCPServer(serverID, address string, port int, messageHandler MessageHand
 		logger:              logging.GlobalLogger.WithPrefix("[TCPServer]"),
 		tcpServer:           gts.NewTCPServer(serverID, address, port),
 		messageHandler:      messageHandler,
-		connectedWorkers:    make(map[string]WorkerConnection),
+		connectedWorkers:    make(map[string]map[string]WorkerConnection),
 		notificationEmitter: notification.New[*proto.Message](DefaultMaxNotificationListeners),
 		asyncPool:           async.NewAsyncPool(serverID, DefaultMaxPoolSize, DefaultMaxAsyncPoolWorkerSize),
 		rwLock:              new(sync.RWMutex),
@@ -79,19 +79,32 @@ func (s *tcpServer) ConnectedWorkerIDs() []string {
 	return res
 }
 
-func (s *tcpServer) RequestWorker(workerID string, m *proto.Message) (*proto.Message, error) {
-	worker := s.getConnectedWorker(workerID)
-	if worker == nil {
+func (s *tcpServer) RequestWorkers(workerID string, m *proto.Message) (map[string]*proto.Message, error) {
+	multiErr := errors.NewMultiError()
+	workers := s.getConnectedWorkers(workerID)
+	if workers == nil {
 		return nil, errors.Error("worker " + workerID + " is not connected")
 	}
-	return worker.Request(m)
+	responses := make(map[string]*proto.Message)
+	for _, worker := range workers {
+		response, err := worker.Request(m)
+		if err != nil {
+			multiErr.Add(err)
+		} else {
+			responses[worker.ConnGID()] = response
+		}
+	}
+	return responses, multiErr
 }
 
 func (s *tcpServer) Close() error {
 	err := s.tcpServer.Stop()
 	s.rwLock.Lock()
 	s.lastErr = err
-	for k := range s.connectedWorkers {
+	for k, cs := range s.connectedWorkers {
+		for _, c := range cs {
+			c.Close()
+		}
 		delete(s.connectedWorkers, k)
 	}
 	if s.stopEventWaiter == nil {
@@ -112,7 +125,6 @@ func (s *tcpServer) Wait() error {
 
 func (s *tcpServer) init() {
 	s.tcpServer.OnClientConnected(func(c gts.Connection) {
-		s.logger.Info(s.ctx, "hello?")
 		ctx := logging.WrapCtx(s.ctx, "address", c.Address())
 		s.logger.Infof(ctx, "client %s connected", c.Address())
 		// flow to get
@@ -124,8 +136,6 @@ func (s *tcpServer) init() {
 		}
 		ctx = logging.WrapCtx(ctx, "worker", workerConn.ID())
 
-		s.asyncPool.Execute(c.ReadLoop)
-
 		byteMessageHandler := createHandler(s.messageHandler, s.notificationEmitter)
 		c.OnMessage(func(b []byte) {
 			s.asyncPool.Execute(func() {
@@ -134,11 +144,13 @@ func (s *tcpServer) init() {
 		})
 		c.OnError(func(err error) {
 			s.logger.Error(ctx, "worker connection encountered error "+err.Error())
+			c.Close()
 		})
 		c.OnClose(func(err error) {
-			s.removeConnectedWorker(workerConn.ID())
 			s.logger.Warn(ctx, "worker connection "+workerConn.ID()+" closed")
+			s.removeConnectedWorker(workerConn.ID(), workerConn.ConnGID())
 		})
+		s.asyncPool.Execute(c.ReadLoop)
 	})
 }
 
@@ -146,22 +158,25 @@ func (s *tcpServer) Broadcast(m *proto.Message) error {
 	s.rwLock.RLock()
 	defer s.rwLock.RUnlock()
 	multiErr := errors.NewMultiError()
-	for _, conn := range s.connectedWorkers {
-		err := conn.Send(m)
-		if err != nil {
-			multiErr.Add(err)
+	for _, conns := range s.connectedWorkers {
+		for _, c := range conns {
+			err := c.Send(m)
+			if err != nil {
+				multiErr.Add(err)
+			}
 		}
 	}
 	return multiErr
 }
 
-func (s *tcpServer) getConnectedWorker(id string) WorkerConnection {
+func (s *tcpServer) getConnectedWorkers(id string) map[string]WorkerConnection {
 	s.rwLock.RLock()
 	defer s.rwLock.RUnlock()
-	return s.connectedWorkers[id]
+	workers := s.connectedWorkers[id]
+	return workers
 }
 
-func (s *tcpServer) removeConnectedWorker(id string) {
+func (s *tcpServer) removeConnectedWorker(id, addr string) {
 	s.rwLock.Lock()
 	defer s.rwLock.Unlock()
 	delete(s.connectedWorkers, id)
@@ -170,19 +185,25 @@ func (s *tcpServer) removeConnectedWorker(id string) {
 func (s *tcpServer) addConnectionWorker(workerConn WorkerConnection) {
 	s.rwLock.Lock()
 	defer s.rwLock.Unlock()
-	s.connectedWorkers[workerConn.ID()] = workerConn
+	if s.connectedWorkers[workerConn.ID()] == nil {
+		s.connectedWorkers[workerConn.ID()] = make(map[string]WorkerConnection)
+	}
+	s.connectedWorkers[workerConn.ID()][workerConn.ConnGID()] = workerConn
 }
 
 func (s *tcpServer) registerWorker(workerConn WorkerConnection) {
-	existingConn := s.getConnectedWorker(workerConn.ID())
-	if existingConn != nil {
-		existingConn.Close()
+	existingConns := s.getConnectedWorkers(workerConn.ID())
+	if existingConns != nil {
+		if existingConn := existingConns[workerConn.ConnGID()]; existingConn != nil {
+			existingConn.Close()
+		}
 	}
 	s.addConnectionWorker(workerConn)
 }
 
 func (s *tcpServer) exchangeProtocol(c gts.Connection) (WorkerConnection, error) {
 	// client should send the first stream on connected, and then server sends back the server information in message
+	s.logger.Infof(s.ctx, "try to read first stream from connected client "+c.Address())
 	firstStream, err := c.Read()
 	if err != nil {
 		return nil, errors.Error("unable to read worker greeting: " + err.Error())
@@ -204,7 +225,7 @@ func (s *tcpServer) exchangeProtocol(c gts.Connection) (WorkerConnection, error)
 	if err != nil {
 		return nil, err
 	}
-	workerConn := NewWorkerConnection(workerInfo.Id, NewGeneralConnection(c, DefaultRequestTimeoutMS))
+	workerConn := NewWorkerConnection(workerInfo.Id, NewGeneralConnection(c, s.notificationEmitter, DefaultRequestTimeoutMS))
 	// register worker to server
 	s.registerWorker(workerConn)
 	return workerConn, err

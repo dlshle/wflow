@@ -1,7 +1,11 @@
 package api
 
 import (
+	"context"
+
+	"github.com/dlshle/gommon/async"
 	"github.com/dlshle/gommon/errors"
+	"github.com/dlshle/gommon/logging"
 	"github.com/dlshle/wflow/internal/client/activity"
 	"github.com/dlshle/wflow/internal/client/job"
 	"github.com/dlshle/wflow/internal/client/message_processors"
@@ -16,9 +20,12 @@ type WorkerClient interface {
 }
 
 type workerClient struct {
+	ctx        context.Context
 	workerID   string
 	jobManager job.JobManager
+	logger     logging.Logger
 	tcpClient  protocol.TCPClient
+	waitLock   *async.WaitLock
 }
 
 func New(workerID, address string, port int, workerActivities []activity.WorkerActivity) (*workerClient, error) {
@@ -39,9 +46,12 @@ func New(workerID, address string, port int, workerActivities []activity.WorkerA
 		jobManager.InitReportingServer(c)
 	})
 	return &workerClient{
+		ctx:        context.Background(),
 		workerID:   workerID,
 		jobManager: jobManager,
 		tcpClient:  tcpClient,
+		waitLock:   async.NewWaitLock(),
+		logger:     logging.GlobalLogger.WithPrefix("[Worker]"),
 	}, nil
 }
 
@@ -62,6 +72,7 @@ func (c *workerClient) Start() error {
 	if err != nil {
 		return err
 	}
+	c.logger.Infof(c.ctx, "server %s connected", serverConn.Address())
 	return c.jobManager.InitReportingServer(serverConn)
 }
 
