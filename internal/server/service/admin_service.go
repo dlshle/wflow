@@ -5,7 +5,6 @@ import (
 
 	"github.com/dlshle/gommon/errors"
 	"github.com/dlshle/gommon/logging"
-	"github.com/dlshle/wflow/internal/protocol"
 	"github.com/dlshle/wflow/internal/server/activity"
 	"github.com/dlshle/wflow/internal/server/job"
 	relationmapping "github.com/dlshle/wflow/internal/server/relation_mapping"
@@ -14,8 +13,6 @@ import (
 )
 
 type AdminService interface {
-	GetWorkerConnection(ctx context.Context, id string) protocol.WorkerConnection
-	ListAllActiveWorkerConnections(ctx context.Context) []protocol.WorkerConnection
 	ListAllActiveWorkers(ctx context.Context) ([]*proto.Worker, error)
 	DisconnectWorker(ctx context.Context, workerID string) error
 	GetWorker(ctx context.Context, workerID string) (*proto.Worker, error)
@@ -45,19 +42,11 @@ func NewAdminService(jobHandler job.Handler, activityHandler activity.Handler, r
 	}
 }
 
-func (s *adminService) GetWorkerConnection(ctx context.Context, id string) protocol.WorkerConnection {
-	return s.workerManager.GetWorkerConnection(id)
-}
-
-func (s *adminService) ListAllActiveWorkerConnections(ctx context.Context) []protocol.WorkerConnection {
-	return s.workerManager.GetConnectedWorkers()
-}
-
 func (s *adminService) ListAllActiveWorkers(ctx context.Context) ([]*proto.Worker, error) {
 	connectedWorkers := s.workerManager.GetConnectedWorkers()
 	workerIDs := make([]string, len(connectedWorkers), len(connectedWorkers))
 	for i := range connectedWorkers {
-		workerIDs = append(workerIDs, connectedWorkers[i].ID())
+		workerIDs[i] = connectedWorkers[i].ID()
 	}
 	return s.workerManager.GetWorkerByIDs(workerIDs)
 }

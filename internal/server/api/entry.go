@@ -69,6 +69,7 @@ func Entry(serverID, configPath string) (err error) {
 		return err
 	}, func() error {
 		tcpServer = NewTCPServer(serverID, "0.0.0.0", cfg.TCPPort, workerManager, jobHandler)
+		workerManager.RegisterTCPServer(tcpServer)
 		return nil
 	}, func() error {
 		return runServers(httpServer, tcpServer)

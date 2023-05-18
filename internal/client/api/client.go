@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"os"
+	"strconv"
 
 	"github.com/dlshle/gommon/async"
 	"github.com/dlshle/gommon/errors"
@@ -28,10 +30,14 @@ type workerClient struct {
 	waitLock   *async.WaitLock
 }
 
-func New(workerID, address string, port int, workerActivities []activity.WorkerActivity) (*workerClient, error) {
+func New(address string, port int, workerActivities []activity.WorkerActivity) (*workerClient, error) {
 	var err error
 	// initialize activity uuids by names, activity name can't be empty
 	workerActivities, err = initializeWorkerActivities(workerActivities)
+	if err != nil {
+		return nil, err
+	}
+	workerID, err := generateWorkerID()
 	if err != nil {
 		return nil, err
 	}
@@ -55,13 +61,32 @@ func New(workerID, address string, port int, workerActivities []activity.WorkerA
 	}, nil
 }
 
+func generateWorkerID() (workerID string, err error) {
+	var (
+		macAddr  string
+		hostName string
+	)
+	macAddr, err = utils.GetMACAddress()
+	if err != nil {
+		return
+	}
+	hostName, err = os.Hostname()
+	if err != nil {
+		return
+	}
+	workerID = utils.GenerateUUIDOnString(macAddr + hostName + strconv.Itoa(os.Getpid()))
+	return
+}
+
 func initializeWorkerActivities(activities []activity.WorkerActivity) ([]activity.WorkerActivity, error) {
 	for i := range activities {
 		rawActivity := activities[i].Activity()
 		if rawActivity.Name == "" {
 			return nil, errors.Error("activity name is empty")
 		}
-		rawActivity.Id = utils.GenerateUUIDOnString(rawActivity.Name)
+		if rawActivity.Id == "" {
+			rawActivity.Id = utils.GenerateUUIDOnString(rawActivity.Name)
+		}
 		activities[i] = activity.NewWorkerActivity(rawActivity, activities[i].Handler())
 	}
 	return activities, nil

@@ -19,9 +19,8 @@ import (
 )
 
 type Manager interface {
+	RegisterTCPServer(server protocol.TCPServer)
 	GetWorkerConnection(id string) protocol.WorkerConnection
-	HandleWorkerConnectionDisconnected(ctx context.Context, workerID string)
-	HandleWorkerConnnection(ctx context.Context, c protocol.WorkerConnection)
 	GetConnectedWorkers() (workers []protocol.WorkerConnection)
 	GetWorkerByIDs(ids []string) (workers []*proto.Worker, err error)
 	DisconnectWorker(ctx context.Context, workerID string) error
@@ -55,6 +54,7 @@ type manager struct {
 	relationMappingHandler relationmapping.Handler
 	jobHandler             job.Handler
 	activityHandler        activity.Handler
+	server                 protocol.TCPServer
 	rwLock                 *sync.RWMutex
 	connectedWorkers       map[string]protocol.WorkerConnection
 }
@@ -71,48 +71,21 @@ func (m *manager) withWrite(cb func()) {
 	cb()
 }
 
-func (m *manager) GetWorkerConnection(id string) (c protocol.WorkerConnection) {
-	m.withRead(func() {
-		c = m.connectedWorkers[id]
-	})
-	return
+func (m *manager) RegisterTCPServer(server protocol.TCPServer) {
+	m.server = server
 }
 
-func (m *manager) putWorkerConnection(id string, c protocol.WorkerConnection) {
-	m.withWrite(func() {
-		m.connectedWorkers[id] = c
-	})
-}
-
-func (m *manager) removeWorkerConnection(id string) {
-	m.withWrite(func() {
-		delete(m.connectedWorkers, id)
-	})
-}
-
-func (m *manager) HandleWorkerConnectionDisconnected(ctx context.Context, workerID string) {
-	m.logger.Infof(ctx, "[HandleWorkerConnectionLost] worker %s is disconnected", workerID)
-	m.removeWorkerConnection(workerID)
-}
-
-func (m *manager) HandleWorkerConnnection(ctx context.Context, c protocol.WorkerConnection) {
-	m.logger.Infof(ctx, "[HandleWorkerConnnection] worker %s connected", c.ID())
-	m.putWorkerConnection(c.ID(), c)
-	c.OnDisconnected(func(gc protocol.GeneralConnection, err error) {
-		m.HandleWorkerConnectionDisconnected(ctx, c.ID())
-		if err != nil {
-			m.logger.Warnf(ctx, "worker %s disconnected with error: %s", c.ID(), err.Error())
-		}
-	})
+func (m *manager) GetWorkerConnection(id string) protocol.WorkerConnection {
+	return m.server.GetWorkerConnectionByID(id)
 }
 
 func (m *manager) GetConnectedWorkers() (workers []protocol.WorkerConnection) {
-	workers = make([]protocol.WorkerConnection, 0, len(m.connectedWorkers))
-	m.withRead(func() {
-		for _, worker := range m.connectedWorkers {
-			workers = append(workers, worker)
-		}
-	})
+	connectedWorkerIDs := m.server.ConnectedWorkerIDs()
+	workers = make([]protocol.WorkerConnection, 0)
+	for _, id := range connectedWorkerIDs {
+		connectedWorker := m.server.GetWorkerConnectionByID(id)
+		workers = append(workers, connectedWorker)
+	}
 	return
 }
 
@@ -136,17 +109,10 @@ func (m *manager) GetWorkerByIDs(ids []string) (workers []*proto.Worker, err err
 
 func (m *manager) DisconnectWorker(ctx context.Context, workerID string) error {
 	m.logger.Infof(ctx, "[DisconnectWorker] disconnecting worker %s", workerID)
-	workerConnection := m.GetWorkerConnection(workerID)
-	if workerConnection == nil {
-		return errors.Error("worker " + workerID + " is not connected")
-	}
-	return workerConnection.Close()
+	return m.server.DisconnectWorkerConnections(workerID)
 }
 
 func (m *manager) HandleWorkerUpdate(ctx context.Context, worker *proto.Worker) (err error) {
-	if m.GetWorkerConnection(worker.Id) == nil {
-		m.logger.Warnf(ctx, "[HandleWorkerUpdate] worker %s is not connected", worker.Id)
-	}
 	worker, err = m.workerStore.Put(worker)
 	if err != nil {
 		return
@@ -207,8 +173,8 @@ func (m *manager) DispatchJob(ctx context.Context, activityID, workerID string, 
 	ctx = logging.WrapCtx(ctx, "activityID", activityID)
 	ctx = logging.WrapCtx(ctx, "workerID", workerID)
 	// TODO: need to support job dispatching in offline mode
-	workerConnection := m.GetWorkerConnection(workerID)
-	if workerConnection == nil {
+	workerConn := m.GetWorkerConnection(workerID)
+	if workerConn == nil {
 		return nil, errors.Error("worker " + workerID + " is not connected")
 	}
 	job := &proto.Job{
@@ -228,7 +194,8 @@ func (m *manager) DispatchJob(ctx context.Context, activityID, workerID string, 
 	if err != nil {
 		return nil, err
 	}
-	resp, err := workerConnection.Request(&proto.Message{
+	// TODO should assign job to worker based on capability, but we will assignment the job to the first match for now
+	resp, err := workerConn.Request(&proto.Message{
 		Id:      wutils.RandomUUID(),
 		Type:    proto.Type_DISPATCH_JOB,
 		Payload: dispatchJobRequestData,
@@ -258,15 +225,15 @@ func (m *manager) CancelJob(ctx context.Context, jobID string) error {
 	if job.Status == proto.JobStatus_FAILED || job.Status == proto.JobStatus_SUCCESS {
 		return errors.Error("job " + jobID + " is already finished")
 	}
-	workerConnection := m.GetWorkerConnection(job.WorkerId)
-	if workerConnection == nil {
+	workerConn := m.GetWorkerConnection(job.WorkerId)
+	if workerConn == nil {
 		return errors.Error("worker " + job.WorkerId + " is not connected")
 	}
 	cancelJobRequestData, err := gproto.Marshal(&proto.Job{Id: jobID})
 	if err != nil {
 		return err
 	}
-	resp, err := workerConnection.Request(&proto.Message{
+	resp, err := workerConn.Request(&proto.Message{
 		Id:      wutils.RandomUUID(),
 		Type:    proto.Type_CANCEL_JOB,
 		Payload: cancelJobRequestData,

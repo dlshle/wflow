@@ -117,7 +117,7 @@ func computeActivitiesDiff(existingActivities []string, worker *proto.Worker) (a
 	var toDelete []string
 	set := transformStringSliceToMap(existingActivities)
 	for _, activity := range worker.SupportedActivities {
-		if set[activity.Id] {
+		if !set[activity.Id] {
 			// to add
 			toAdd = append(toAdd, activity.Id)
 		}

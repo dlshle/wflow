@@ -48,31 +48,29 @@ func (m *relationMappingStore) TxFindWorkersByActivityID(tx store.SQLTransaction
 }
 
 func (m *relationMappingStore) TxAddActivityWorkerMapping(tx store.SQLTransactional, activityID, workerID string) (exists bool, err error) {
-	mapping := &activityWorkerMapping{}
-	err = tx.Select(mapping, "SELECT * FROM activity_worker_mappings WHERE activity_id = $1 AND worker_id = $2", activityID, workerID)
+	var mappings []ActivityWorkerMapping
+	err = tx.Select(&mappings, "SELECT * FROM activity_worker_mappings WHERE activity_id = $1 AND worker_id = $2", activityID, workerID)
 	if err != nil {
 		return
 	}
-	if mapping.activityID != "" {
-		exists = true
-		return
+	if len(mappings) > 0 && mappings[0].ActivityID != "" {
+		return true, nil
 	}
-	_, err = tx.Exec("INSERT INTO activity_worker_mappings (activity_id, worker_id) VALUE ($1, $2)", activityID, workerID)
+	_, err = tx.Exec("INSERT INTO activity_worker_mappings (activity_id, worker_id) VALUES ($1, $2)", activityID, workerID)
 	exists = false
 	return
 }
 
 func (m *relationMappingStore) TxAddJobWorkerMapping(tx store.SQLTransactional, jobID, workerID string) (exists bool, err error) {
-	mapping := &jobWorkerMapping{}
-	err = tx.Select(mapping, "SELECT * FROM job_worker_mappings WHERE job_id = $1 AND worker_id = $2", jobID, workerID)
+	var mappings []JobWorkerMapping
+	err = tx.Select(&mappings, "SELECT * FROM job_worker_mappings WHERE job_id = $1 AND worker_id = $2", jobID, workerID)
 	if err != nil {
 		return
 	}
-	if mapping.jobID != "" {
-		exists = true
-		return
+	if len(mappings) > 0 && mappings[0].JobID != "" {
+		return true, nil
 	}
-	_, err = tx.Exec("INSERT INTO job_worker_mappings (job_id, worker_id) VALUE ($1, $2)", jobID, workerID)
+	_, err = tx.Exec("INSERT INTO job_worker_mappings (job_id, worker_id) VALUES ($1, $2)", jobID, workerID)
 	exists = false
 	return
 }

@@ -19,7 +19,9 @@ type TCPServer interface {
 	StartAsync()
 	Broadcast(*proto.Message) error
 	ConnectedWorkerIDs() []string
-	RequestWorkers(string, *proto.Message) (map[string]*proto.Message, error)
+	DisconnectWorkerConnections(string) error
+	GetWorkerConnectionByID(string) WorkerConnection
+	RequestWorkers(string, *proto.Message) (*proto.Message, error)
 	Close() error
 	Wait() error
 }
@@ -30,7 +32,7 @@ type tcpServer struct {
 	id                  string
 	logger              logging.Logger
 	messageHandler      MessageHandler
-	connectedWorkers    map[string](map[string]WorkerConnection)
+	connectedWorkers    map[string]*workerConnection // we gotta make sure each worker represents a process and has a unique id, a worker could have multiple connections
 	notificationEmitter notification.WRNotificationEmitter[*proto.Message]
 	asyncPool           async.AsyncPool
 	startedTime         time.Time
@@ -46,7 +48,7 @@ func NewTCPServer(serverID, address string, port int, messageHandler MessageHand
 		logger:              logging.GlobalLogger.WithPrefix("[TCPServer]"),
 		tcpServer:           gts.NewTCPServer(serverID, address, port),
 		messageHandler:      messageHandler,
-		connectedWorkers:    make(map[string]map[string]WorkerConnection),
+		connectedWorkers:    make(map[string]*workerConnection),
 		notificationEmitter: notification.New[*proto.Message](DefaultMaxNotificationListeners),
 		asyncPool:           async.NewAsyncPool(serverID, DefaultMaxPoolSize, DefaultMaxAsyncPoolWorkerSize),
 		rwLock:              new(sync.RWMutex),
@@ -79,22 +81,23 @@ func (s *tcpServer) ConnectedWorkerIDs() []string {
 	return res
 }
 
-func (s *tcpServer) RequestWorkers(workerID string, m *proto.Message) (map[string]*proto.Message, error) {
-	multiErr := errors.NewMultiError()
-	workers := s.getConnectedWorkers(workerID)
-	if workers == nil {
+func (s *tcpServer) DisconnectWorkerConnections(workerID string) error {
+	conn := s.GetWorkerConnectionByID(workerID)
+	return conn.Close()
+}
+
+func (s *tcpServer) GetWorkerConnectionByID(workerID string) WorkerConnection {
+	s.rwLock.RLock()
+	defer s.rwLock.RUnlock()
+	return s.connectedWorkers[workerID]
+}
+
+func (s *tcpServer) RequestWorkers(workerID string, m *proto.Message) (*proto.Message, error) {
+	worker := s.getConnectedWorkers(workerID)
+	if worker == nil {
 		return nil, errors.Error("worker " + workerID + " is not connected")
 	}
-	responses := make(map[string]*proto.Message)
-	for _, worker := range workers {
-		response, err := worker.Request(m)
-		if err != nil {
-			multiErr.Add(err)
-		} else {
-			responses[worker.ConnGID()] = response
-		}
-	}
-	return responses, multiErr
+	return worker.Request(m)
 }
 
 func (s *tcpServer) Close() error {
@@ -102,9 +105,7 @@ func (s *tcpServer) Close() error {
 	s.rwLock.Lock()
 	s.lastErr = err
 	for k, cs := range s.connectedWorkers {
-		for _, c := range cs {
-			c.Close()
-		}
+		cs.Close()
 		delete(s.connectedWorkers, k)
 	}
 	if s.stopEventWaiter == nil {
@@ -158,22 +159,23 @@ func (s *tcpServer) Broadcast(m *proto.Message) error {
 	s.rwLock.RLock()
 	defer s.rwLock.RUnlock()
 	multiErr := errors.NewMultiError()
-	for _, conns := range s.connectedWorkers {
-		for _, c := range conns {
-			err := c.Send(m)
-			if err != nil {
-				multiErr.Add(err)
-			}
+	for _, c := range s.connectedWorkers {
+		err := c.Send(m)
+		if err != nil {
+			multiErr.Add(err)
 		}
+	}
+	if multiErr.Size() == 0 {
+		return nil
 	}
 	return multiErr
 }
 
-func (s *tcpServer) getConnectedWorkers(id string) map[string]WorkerConnection {
+func (s *tcpServer) getConnectedWorkers(id string) WorkerConnection {
 	s.rwLock.RLock()
 	defer s.rwLock.RUnlock()
-	workers := s.connectedWorkers[id]
-	return workers
+	worker := s.connectedWorkers[id]
+	return worker
 }
 
 func (s *tcpServer) removeConnectedWorker(id, addr string) {
@@ -182,23 +184,17 @@ func (s *tcpServer) removeConnectedWorker(id, addr string) {
 	delete(s.connectedWorkers, id)
 }
 
-func (s *tcpServer) addConnectionWorker(workerConn WorkerConnection) {
+func (s *tcpServer) addConnectionWorker(workerID string, conn GeneralConnection) *workerConnection {
 	s.rwLock.Lock()
 	defer s.rwLock.Unlock()
-	if s.connectedWorkers[workerConn.ID()] == nil {
-		s.connectedWorkers[workerConn.ID()] = make(map[string]WorkerConnection)
+	workerConn := s.connectedWorkers[workerID]
+	if conn != nil {
+		workerConn.addWorkerConn(conn)
+	} else {
+		workerConn = NewWorkerConnection(workerID, conn)
 	}
-	s.connectedWorkers[workerConn.ID()][workerConn.ConnGID()] = workerConn
-}
-
-func (s *tcpServer) registerWorker(workerConn WorkerConnection) {
-	existingConns := s.getConnectedWorkers(workerConn.ID())
-	if existingConns != nil {
-		if existingConn := existingConns[workerConn.ConnGID()]; existingConn != nil {
-			existingConn.Close()
-		}
-	}
-	s.addConnectionWorker(workerConn)
+	s.connectedWorkers[workerID] = workerConn
+	return workerConn
 }
 
 func (s *tcpServer) exchangeProtocol(c gts.Connection) (WorkerConnection, error) {
@@ -225,9 +221,9 @@ func (s *tcpServer) exchangeProtocol(c gts.Connection) (WorkerConnection, error)
 	if err != nil {
 		return nil, err
 	}
-	workerConn := NewWorkerConnection(workerInfo.Id, NewGeneralConnection(c, s.notificationEmitter, DefaultRequestTimeoutMS))
+	conn := NewGeneralConnection(c, s.notificationEmitter, DefaultRequestTimeoutMS)
 	// register worker to server
-	s.registerWorker(workerConn)
+	workerConn := s.addConnectionWorker(workerResp.Id, conn)
 	return workerConn, err
 }
 

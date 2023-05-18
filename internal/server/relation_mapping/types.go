@@ -1,13 +1,13 @@
 package relationmapping
 
-type jobWorkerMapping struct {
-	id       int    `db:"id"`
-	jobID    string `db:"job_id"`
-	workerID string `db:"worker_id"`
+type JobWorkerMapping struct {
+	ID       int    `db:"id"`
+	JobID    string `db:"job_id"`
+	WorkerID string `db:"worker_id"`
 }
 
-type activityWorkerMapping struct {
-	id         int    `db:"id"`
-	activityID string `db:"activity_id"`
-	workerID   string `db:"worker_id"`
+type ActivityWorkerMapping struct {
+	ID         int    `db:"id"`
+	ActivityID string `db:"activity_id"`
+	WorkerID   string `db:"worker_id"`
 }

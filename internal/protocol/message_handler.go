@@ -40,6 +40,8 @@ func (h *messageHandler) Handle(ctx context.Context, c GeneralConnection, m *pro
 			multiErrors.Add(err)
 		}
 	}
-	err = multiErrors
+	if multiErrors.Size() > 0 {
+		err = multiErrors
+	}
 	return
 }
