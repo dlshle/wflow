@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/dlshle/aghs v1.4.60
 	github.com/dlshle/gommon v0.4.73
-	github.com/dlshle/gts v0.0.3
+	github.com/dlshle/gts v0.0.4
 	google.golang.org/grpc v1.53.0
 )
 
@@ -18,7 +18,7 @@ require (
 
 require (
 	github.com/gofrs/uuid v4.4.0+incompatible
-	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/golang/protobuf v1.5.2
 	github.com/jmoiron/sqlx v1.3.5
 	github.com/lib/pq v1.10.9
 	github.com/petermattis/goid v0.0.0-20220331194723-8ee3e6ded87a // indirect

@@ -76,7 +76,11 @@ func (m *manager) RegisterTCPServer(server protocol.TCPServer) {
 }
 
 func (m *manager) GetWorkerConnection(id string) protocol.WorkerConnection {
-	return m.server.GetWorkerConnectionByID(id)
+	workerConn := m.server.GetWorkerConnectionByID(id)
+	if workerConn == nil {
+		return nil
+	}
+	return workerConn
 }
 
 func (m *manager) GetConnectedWorkers() (workers []protocol.WorkerConnection) {
@@ -144,7 +148,11 @@ func (m *manager) QueryRemoteWorker(ctx context.Context, workerID string) (*prot
 	if workerConn == nil {
 		return nil, errors.Error("worker " + workerID + " is not connected")
 	}
-	workerHolder := &proto.Worker{Id: workerID}
+	return m.queryRemoteWorker(ctx, workerConn)
+}
+
+func (m *manager) queryRemoteWorker(ctx context.Context, workerConn protocol.WorkerConnection) (*proto.Worker, error) {
+	workerHolder := &proto.Worker{Id: workerConn.ID()}
 	workerQueryRequestData, err := gproto.Marshal(workerHolder)
 	if err != nil {
 		return nil, err
@@ -158,7 +166,7 @@ func (m *manager) QueryRemoteWorker(ctx context.Context, workerID string) (*prot
 		return nil, err
 	}
 	if resp.Status != proto.Status_OK {
-		m.logger.Errorf(ctx, "[QueryRemoteWorker] failed to query worker %s due to %s", workerID, resp.Status.String())
+		m.logger.Errorf(ctx, "[QueryRemoteWorker] failed to query worker %s due to %s", workerConn.ID(), resp.Status.String())
 		return nil, errors.Error("failed to query worker status, remote respond with: " + string(resp.Payload))
 	}
 	err = gproto.Unmarshal(resp.Payload, workerHolder)

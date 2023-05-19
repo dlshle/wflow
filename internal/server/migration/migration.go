@@ -34,5 +34,14 @@ var Versions = []string{
 		activity_id uuid,
 		worker_id uuid,
 		PRIMARY KEY ( id )
-	);`,
+	);
+	
+	CREATE TABLE IF NOT EXISTS job_logs (
+		id serial not null,
+		job_id uuid,
+		timestamp int,
+		pb bytea,
+		PRIMARY KEY ( id )
+	);
+	`,
 }

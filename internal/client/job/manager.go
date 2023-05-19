@@ -9,6 +9,7 @@ import (
 	"github.com/dlshle/gommon/errors"
 	"github.com/dlshle/gommon/logging"
 	"github.com/dlshle/wflow/internal/client/activity"
+	wlogging "github.com/dlshle/wflow/internal/client/logging"
 	"github.com/dlshle/wflow/internal/protocol"
 	"github.com/dlshle/wflow/pkg/utils"
 	"github.com/dlshle/wflow/proto"
@@ -124,11 +125,23 @@ func (m *jobManager) Job(jobID string) (*proto.JobReport, error) {
 	return cancellableJobReport.JobReport, nil
 }
 
+func (m *jobManager) ActiveJobIDs() (res []string) {
+	m.rwLock.RLock()
+	defer m.rwLock.RUnlock()
+	res = make([]string, 0)
+	for _, job := range m.jobs {
+		if isJobActive(job.JobReport) {
+			res = append(res, job.Job.Id)
+		}
+	}
+	return
+}
+
 func (m *jobManager) WorkerInfo() *proto.Worker {
 	return &proto.Worker{
 		Id:                  m.workerID,
 		SystemStat:          utils.GetSystemStat(),
-		ActiveJobs:          m.JobIDs(),
+		ActiveJobs:          m.ActiveJobIDs(),
 		SupportedActivities: m.SupportedActivities(),
 		WorkerStatus:        m.getWorkerStatus(),
 	}
@@ -230,21 +243,26 @@ func (m *jobManager) processJob(jobID string) {
 		return
 	}
 	jobCtx := jobReport.jobCtx
+	remoteLogginCtx, loggingCancelFunc := context.WithCancel(logging.WrapCtx(context.Background(), "job_id", jobID))
+	defer loggingCancelFunc()
+	jobLogger := logging.GlobalLogger.WithWriter(wlogging.NewWFlowLogWriter(remoteLogginCtx, jobID, m.serverConn))
 	m.logger.Info(jobCtx, "process job "+jobID)
+	jobLogger.Infof(jobCtx, "process job %s started", jobID)
 	jobReport.Status = proto.JobStatus_RUNNING
 	workerActivity := m.workerActivities[jobReport.Job.ActivityId]
 	m.reportJobStatus(jobReport) // we can do this in async
-	result, err := workerActivity.Handler()(jobCtx, jobReport.Job.Param)
+	result, err := workerActivity.Handler()(jobCtx, jobLogger, jobReport.Job.Param)
+	jobLogger.Infof(jobCtx, "job %s completed, err = %v", jobID, err)
 	// before statuses are set, check if job is cancelled
 	if m.isJobCancelled(jobID) {
-		m.logger.Info(jobCtx, "job is cancelled, ignoring job results and error")
+		jobLogger.Info(jobCtx, "job is cancelled, ignoring job results and error")
 		return
 	}
 	if err != nil {
-		m.logger.Info(jobCtx, "job "+jobID+" failed due to "+err.Error())
+		jobLogger.Info(jobCtx, "job is cancelled, ignoring job results and error")
 		jobReport.Status = proto.JobStatus_FAILED
 	} else {
-		m.logger.Info(jobCtx, "job "+jobID+" is completed successfully")
+		jobLogger.Info(jobCtx, "job is cancelled, ignoring job results and error")
 		jobReport.Status = proto.JobStatus_SUCCESS
 		jobReport.Result = result
 	}
@@ -273,4 +291,8 @@ func (m *jobManager) reportJobStatus(jobReport *cancellableJobReport) error {
 		Payload: jobReportData,
 	})
 	return err
+}
+
+func isJobActive(job *proto.JobReport) bool {
+	return job.Status == proto.JobStatus_DISPATCHED || job.Status == proto.JobStatus_RUNNING || job.Status == proto.JobStatus_PENDING
 }

@@ -1,5 +1,6 @@
 package protocol
 
+// a server connection represents a connection from a client to the server
 type ServerConnection interface {
 	ID() string
 	GeneralConnection

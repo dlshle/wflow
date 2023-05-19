@@ -53,7 +53,11 @@ func (c *generalConnection) Send(m *proto.Message) error {
 func (c *generalConnection) Respond(m *proto.Message, status proto.Status, payload []byte) error {
 	m.Type = proto.Type_RESPONSE
 	m.Status = status
-	m.Payload = payload
+	if payload != nil {
+		m.Payload = payload
+	} else {
+		m.Payload = []byte{1}
+	}
 	return c.Send(m)
 }
 

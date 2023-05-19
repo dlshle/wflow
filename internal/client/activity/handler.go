@@ -1,5 +1,9 @@
 package activity
 
-import "context"
+import (
+	"context"
 
-type ActivityHandler func(context.Context, []byte) ([]byte, error)
+	"github.com/dlshle/gommon/logging"
+)
+
+type ActivityHandler func(context.Context, logging.Logger, []byte) ([]byte, error)

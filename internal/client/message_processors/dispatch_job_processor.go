@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/dlshle/gommon/errors"
+	"github.com/dlshle/gommon/logging"
 	"github.com/dlshle/wflow/internal/client/job"
 	"github.com/dlshle/wflow/internal/protocol"
 	"github.com/dlshle/wflow/proto"
@@ -19,6 +20,7 @@ func CreateDispatchJobProcessor(jobManager job.JobManager) protocol.MessageProce
 		}
 		err = jobManager.Handle(ctx, job)
 		if err != nil {
+			logging.GlobalLogger.Errorf(ctx, "failed to handle job due to %s", err.Error())
 			return err
 		}
 		return gc.Respond(m, proto.Status_OK, nil)

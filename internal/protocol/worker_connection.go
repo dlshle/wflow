@@ -8,6 +8,7 @@ import (
 	"github.com/dlshle/wflow/proto"
 )
 
+// a worker connection wraps all tcp connections from a client to the server
 type WorkerConnection interface {
 	ID() string
 	NumberOfConnections() int
@@ -27,7 +28,7 @@ func NewWorkerConnection(workerID string, conn GeneralConnection) *workerConnect
 		id:    workerID,
 		gid:   utils.RandomUUID(),
 		conns: []GeneralConnection{conn},
-		mu:    &sync.Mutex{},
+		mu:    new(sync.Mutex),
 	}
 }
 

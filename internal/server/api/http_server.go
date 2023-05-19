@@ -2,20 +2,28 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 
 	"github.com/dlshle/aghs/server"
 	"github.com/dlshle/gommon/logging"
 	"github.com/dlshle/wflow/internal/server/service"
 	"github.com/dlshle/wflow/proto"
-	gproto "google.golang.org/protobuf/proto"
+	"github.com/golang/protobuf/jsonpb"
 )
 
 type httpServer struct {
 	server.Server
 }
 
+type DispatchJobRequest struct {
+	WorkerID   string `json:"workerId"`
+	ActivityID string `json:"activityId"`
+	Payload    string `json:"payload"`
+}
+
 func NewHTTPServer(port int, adminService service.AdminService) (*httpServer, error) {
+	marshaller := jsonpb.Marshaler{}
 	adminHTTPServerService, err := server.NewServiceBuilder().
 		Id("adminService").
 		WithRouteHandlers(server.PathHandlerBuilder("/activeWorkers").
@@ -28,11 +36,11 @@ func NewHTTPServer(port int, adminService service.AdminService) (*httpServer, er
 					workersMap[worker.Id] = worker
 				}
 				workersResponse := &proto.AdminWorkersResponse{Workers: workersMap}
-				workersResponseData, err := gproto.Marshal(workersResponse)
+				jsonified, err := marshaller.MarshalToString(workersResponse)
 				if err != nil {
 					return server.NewResponse(500, err.Error())
 				}
-				return server.NewResponse(200, string(workersResponseData))
+				return server.NewResponse(200, jsonified)
 			}).MustBuild().HandleRequest)).
 		WithRouteHandlers(server.PathHandlerBuilder("/worker/:id").
 			Get(server.NewCHandlerBuilder[any]().OnRequest(func(c server.CHandle[any]) server.Response {
@@ -44,11 +52,11 @@ func NewHTTPServer(port int, adminService service.AdminService) (*httpServer, er
 				if err != nil {
 					return server.NewResponse(500, err.Error())
 				}
-				workerData, err := gproto.Marshal(worker)
+				workerData, err := marshaller.MarshalToString(worker)
 				if err != nil {
 					return server.NewResponse(500, err.Error())
 				}
-				return server.NewResponse(200, string(workerData))
+				return server.NewResponse(200, workerData)
 			}).MustBuild().HandleRequest).
 			Delete(server.NewCHandlerBuilder[any]().OnRequest(func(c server.CHandle[any]) server.Response {
 				workerID := c.PathParam("id")
@@ -72,11 +80,11 @@ func NewHTTPServer(port int, adminService service.AdminService) (*httpServer, er
 				if err != nil {
 					return server.NewResponse(500, err.Error())
 				}
-				jobData, err := gproto.Marshal(job)
+				jobData, err := marshaller.MarshalToString(job)
 				if err != nil {
 					return server.NewResponse(500, err.Error())
 				}
-				return server.NewResponse(200, string(jobData))
+				return server.NewResponse(200, jobData)
 			}).MustBuild().HandleRequest).
 			Delete(server.NewCHandlerBuilder[any]().OnRequest(func(c server.CHandle[any]) server.Response {
 				jobID := c.PathParam("id")
@@ -90,6 +98,45 @@ func NewHTTPServer(port int, adminService service.AdminService) (*httpServer, er
 				return server.NewResponse(200, nil)
 			}).MustBuild().HandleRequest).
 			Build()).
+		WithRouteHandlers(server.PathHandlerBuilder("/jobs").
+			Post(server.NewCHandlerBuilder[DispatchJobRequest]().UseDefaultUnmarshaller().OnRequest(func(c server.CHandle[DispatchJobRequest]) server.Response {
+				ctx := context.Background()
+				ctx = logging.WrapCtx(ctx, "adminService", "DispatchJob")
+				ctx = logging.WrapCtx(ctx, "workerID", c.Data().WorkerID)
+				ctx = logging.WrapCtx(ctx, "activityID", c.Data().ActivityID)
+				data := c.Data()
+				decoded, err := base64.StdEncoding.DecodeString(data.Payload)
+				if err != nil {
+					return server.NewResponse(500, err.Error())
+				}
+				jobReport, err := adminService.DispatchJob(ctx, data.ActivityID, data.WorkerID, decoded)
+				if err != nil {
+					return server.NewResponse(500, err.Error())
+				}
+				jobsResponseData, err := marshaller.MarshalToString(jobReport)
+				if err != nil {
+					return server.NewResponse(500, err.Error())
+				}
+				return server.NewResponse(200, jobsResponseData)
+			}).MustBuild().HandleRequest).
+			Build()).
+		WithRouteHandlers(server.PathHandlerBuilder("/jobs/:id/logs").
+			Get(server.NewCHandlerBuilder[any]().OnRequest(func(c server.CHandle[any]) server.Response {
+				jobID := c.PathParam("id")
+				ctx := context.Background()
+				ctx = logging.WrapCtx(ctx, "jobID", jobID)
+				jobLogs, err := adminService.GetLogsByJobID(ctx, jobID)
+				if err != nil {
+					return server.NewResponse(500, err.Error())
+				}
+				wrappedLogs := &proto.WrappedLogs{Logs: jobLogs}
+				logs, err := marshaller.MarshalToString(wrappedLogs)
+				if err != nil {
+					return server.NewResponse(500, err.Error())
+				}
+				return server.NewResponse(200, logs)
+			}).MustBuild().HandleRequest).
+			Build()).
 		WithRouteHandlers(server.PathHandlerBuilder("/activities/:id").
 			Get(server.NewCHandlerBuilder[any]().OnRequest(func(c server.CHandle[any]) server.Response {
 				activityID := c.PathParam("id")
@@ -100,11 +147,11 @@ func NewHTTPServer(port int, adminService service.AdminService) (*httpServer, er
 				if err != nil {
 					return server.NewResponse(500, err.Error())
 				}
-				activityData, err := gproto.Marshal(activity)
+				activityData, err := marshaller.MarshalToString(activity)
 				if err != nil {
 					return server.NewResponse(500, err.Error())
 				}
-				return server.NewResponse(200, string(activityData))
+				return server.NewResponse(200, activityData)
 			}).MustBuild().HandleRequest).Build()).
 		Build()
 	if err != nil {

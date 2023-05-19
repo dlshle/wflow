@@ -88,8 +88,12 @@ func (s *tcpServer) DisconnectWorkerConnections(workerID string) error {
 
 func (s *tcpServer) GetWorkerConnectionByID(workerID string) WorkerConnection {
 	s.rwLock.RLock()
-	defer s.rwLock.RUnlock()
-	return s.connectedWorkers[workerID]
+	workerConn := s.connectedWorkers[workerID]
+	s.rwLock.RUnlock()
+	if workerConn == nil {
+		return nil
+	}
+	return workerConn
 }
 
 func (s *tcpServer) RequestWorkers(workerID string, m *proto.Message) (*proto.Message, error) {
@@ -171,7 +175,7 @@ func (s *tcpServer) Broadcast(m *proto.Message) error {
 	return multiErr
 }
 
-func (s *tcpServer) getConnectedWorkers(id string) WorkerConnection {
+func (s *tcpServer) getConnectedWorkers(id string) *workerConnection {
 	s.rwLock.RLock()
 	defer s.rwLock.RUnlock()
 	worker := s.connectedWorkers[id]
@@ -188,7 +192,7 @@ func (s *tcpServer) addConnectionWorker(workerID string, conn GeneralConnection)
 	s.rwLock.Lock()
 	defer s.rwLock.Unlock()
 	workerConn := s.connectedWorkers[workerID]
-	if conn != nil {
+	if workerConn != nil {
 		workerConn.addWorkerConn(conn)
 	} else {
 		workerConn = NewWorkerConnection(workerID, conn)

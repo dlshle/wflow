@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"encoding/hex"
 
 	"github.com/dlshle/gommon/logging"
 	"github.com/dlshle/gommon/notification"
@@ -15,14 +16,17 @@ func createHandler(messageHandler MessageHandler, eventEmitter notification.WRNo
 		m := &proto.Message{}
 		err := gproto.Unmarshal(b, m)
 		if err != nil {
-			logger.Error(ctx, "failed to unmarshall message")
+			encoded := hex.EncodeToString(b)
+			logger.Error(ctx, "failed to unmarshall message from ["+encoded+"] due to "+err.Error())
 			handleError(c, m, err)
 			return
 		}
 		ctx = logging.WrapCtx(ctx, "message_id", m.Id)
-		logger.Info(ctx, "received message "+m.String())
 		processed := eventEmitter.Notify(m.Id, m)
-		if m.Type == proto.Type_RESPONSE || processed {
+		if m.Type == proto.Type_RESPONSE {
+			if !processed {
+				logger.Errorf(ctx, "unhandled response message %v", m)
+			}
 			return
 		}
 		err = messageHandler.Handle(ctx, c, m)

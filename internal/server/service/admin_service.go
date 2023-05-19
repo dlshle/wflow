@@ -7,6 +7,7 @@ import (
 	"github.com/dlshle/gommon/logging"
 	"github.com/dlshle/wflow/internal/server/activity"
 	"github.com/dlshle/wflow/internal/server/job"
+	"github.com/dlshle/wflow/internal/server/logs"
 	relationmapping "github.com/dlshle/wflow/internal/server/relation_mapping"
 	"github.com/dlshle/wflow/internal/server/worker"
 	"github.com/dlshle/wflow/proto"
@@ -21,24 +22,27 @@ type AdminService interface {
 	GetWorkersByActivityID(ctx context.Context, activityID string) ([]*proto.Worker, error)
 	GetJobByID(ctx context.Context, jobID string) (*proto.JobReport, error)
 	CancelJob(ctx context.Context, jobID string) error
+	GetLogsByJobID(ctx context.Context, jobID string) ([]*proto.JobLog, error)
 	DispatchJob(ctx context.Context, activityID, workerID string, param []byte) (*proto.JobReport, error)
 }
 
 type adminService struct {
 	logger                 logging.Logger
 	jobHandler             job.Handler
+	logStore               logs.Store
 	activityHandler        activity.Handler
 	relationMappingHandler relationmapping.Handler
 	workerManager          worker.Manager
 }
 
-func NewAdminService(jobHandler job.Handler, activityHandler activity.Handler, relationMappingHandler relationmapping.Handler, workerManager worker.Manager) AdminService {
+func NewAdminService(jobHandler job.Handler, activityHandler activity.Handler, relationMappingHandler relationmapping.Handler, workerManager worker.Manager, logStore logs.Store) AdminService {
 	return &adminService{
 		logger:                 logging.GlobalLogger.WithPrefix("[AdminService]"),
 		jobHandler:             jobHandler,
 		activityHandler:        activityHandler,
 		relationMappingHandler: relationMappingHandler,
 		workerManager:          workerManager,
+		logStore:               logStore,
 	}
 }
 
@@ -57,11 +61,11 @@ func (s *adminService) DisconnectWorker(ctx context.Context, workerID string) er
 
 func (s *adminService) GetWorker(ctx context.Context, workerID string) (*proto.Worker, error) {
 	workerConn := s.workerManager.GetWorkerConnection(workerID)
-	if workerConn != nil {
-		return s.workerManager.QueryRemoteWorker(ctx, workerID)
+	if workerConn == nil {
+		s.logger.Warnf(ctx, "worker %s is not connected, query from db", workerID)
+		return s.workerManager.QueryWorkerFromDB(ctx, workerID)
 	}
-	s.logger.Warnf(ctx, "worker %s is not connected, query from db", workerID)
-	return s.workerManager.QueryWorkerFromDB(ctx, workerID)
+	return s.workerManager.QueryRemoteWorker(ctx, workerID)
 }
 
 func (s *adminService) GetActivity(ctx context.Context, activityID string) (*proto.Activity, error) {
@@ -89,4 +93,8 @@ func (s *adminService) DispatchJob(ctx context.Context, activityID, workerID str
 		return nil, errors.Error("activity or worker id is empty")
 	}
 	return s.workerManager.DispatchJob(ctx, activityID, workerID, param)
+}
+
+func (s *adminService) GetLogsByJobID(ctx context.Context, jobID string) ([]*proto.JobLog, error) {
+	return s.logStore.GetLogsByJobID(jobID)
 }

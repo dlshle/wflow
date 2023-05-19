@@ -5,9 +5,10 @@ package com.github.dlshle.wflow;
 option go_package = "github.com/dlshle/wflow/proto";
 
 enum Status {
-    OK = 0;
+    UNKNOWN = 0;
     INTERNAL = 1;
     INVALID = 2;
+    OK = 3;
 }
 
 enum Type {
@@ -21,6 +22,7 @@ enum Type {
     DISCONNECT_WORKER = 7; // from server only
     JOB_UPDATE = 8; // client to server for job update(completion with result, failed with reason)
     WORKER_READY = 10; // client to server only
+    UPLOAD_LOGS = 11; // client to server only
     CUSTOM = 100; // custom message for both server and worker
 }
 
@@ -89,6 +91,27 @@ message SystemStat {
     int32 cpu_count = 2;
     int32 available_memory_in_bytes = 3;
     int32 total_memory_in_bytes = 4;
+    int32 cpu_usage = 5;
+}
+
+enum LogLevel {
+    DEBUG = 0;
+    INFO = 1;
+    WARN = 2;
+    ERROR = 3;
+    FATAL = 4;
+}
+
+message JobLog {
+    string job_id = 1;
+    int32 timestamp = 2; 
+    LogLevel level = 3;
+    string message = 4;
+    map<string, string> contexts = 5;
+}
+
+message WrappedLogs {
+    repeated JobLog logs = 1;
 }
 
 message AdminWorkersResponse {

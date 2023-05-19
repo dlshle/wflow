@@ -11,6 +11,7 @@ import (
 	"github.com/dlshle/wflow/internal/server/activity"
 	"github.com/dlshle/wflow/internal/server/config"
 	"github.com/dlshle/wflow/internal/server/job"
+	"github.com/dlshle/wflow/internal/server/logs"
 	"github.com/dlshle/wflow/internal/server/migration"
 	relationmapping "github.com/dlshle/wflow/internal/server/relation_mapping"
 	"github.com/dlshle/wflow/internal/server/service"
@@ -37,6 +38,7 @@ func Entry(serverID, configPath string) (err error) {
 		// workerStore            worker.Store
 		workerManager          worker.Manager
 		activityStore          activity.Store
+		logsStore              logs.Store
 		activityHandler        activity.Handler
 		relationMappingHandler relationmapping.Handler
 		adminService           service.AdminService
@@ -50,6 +52,9 @@ func Entry(serverID, configPath string) (err error) {
 		db, err = setupDatabase(cfg)
 		return err
 	}, func() error {
+		logsStore = setupLogsStore(db)
+		return nil
+	}, func() error {
 		activityStore, activityHandler, err = setupActivityDependencies(cfg)
 		return err
 	}, func() error {
@@ -62,13 +67,13 @@ func Entry(serverID, configPath string) (err error) {
 		_, workerManager, err = setupWorkerDependencies(cfg, relationMappingHandler, jobHandler, activityHandler)
 		return err
 	}, func() error {
-		adminService, err = setupAdminDependencies(activityHandler, relationMappingHandler, jobHandler, workerManager)
+		adminService, err = setupAdminDependencies(activityHandler, relationMappingHandler, jobHandler, workerManager, logsStore)
 		return err
 	}, func() error {
 		httpServer, err = NewHTTPServer(cfg.HTTPPort, adminService)
 		return err
 	}, func() error {
-		tcpServer = NewTCPServer(serverID, "0.0.0.0", cfg.TCPPort, workerManager, jobHandler)
+		tcpServer = NewTCPServer(serverID, "0.0.0.0", cfg.TCPPort, workerManager, jobHandler, logsStore)
 		workerManager.RegisterTCPServer(tcpServer)
 		return nil
 	}, func() error {
@@ -125,6 +130,10 @@ func getDatabaseConnectionString(cfg config.ServerConfig) string {
 		fullDBUri, cfg.Database.Database)
 }
 
+func setupLogsStore(db *sqlx.DB) logs.Store {
+	return logs.NewStore(db)
+}
+
 func setupWorkerDependencies(cfg config.ServerConfig, relationMappingHandler relationmapping.Handler, jobHandler job.Handler, activityHandler activity.Handler) (workerStore worker.Store, manager worker.Manager, err error) {
 	workerStore, err = worker.NewStore(getDatabaseConnectionString(cfg))
 	manager = worker.NewManager(workerStore, relationMappingHandler, jobHandler, activityHandler)
@@ -155,7 +164,7 @@ func setupRelationMappingDependencies(db *sqlx.DB, activityStore activity.Store)
 	return
 }
 
-func setupAdminDependencies(activityHandler activity.Handler, relationMappingHandler relationmapping.Handler, jobHandler job.Handler, workerManager worker.Manager) (adminService service.AdminService, err error) {
-	adminService = service.NewAdminService(jobHandler, activityHandler, relationMappingHandler, workerManager)
+func setupAdminDependencies(activityHandler activity.Handler, relationMappingHandler relationmapping.Handler, jobHandler job.Handler, workerManager worker.Manager, logsStore logs.Store) (adminService service.AdminService, err error) {
+	adminService = service.NewAdminService(jobHandler, activityHandler, relationMappingHandler, workerManager, logsStore)
 	return
 }
