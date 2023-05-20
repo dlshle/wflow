@@ -10,7 +10,7 @@ import (
 
 func main() {
 	// load shell executor by default
-	client, err := api.New("localhost", 14514, []activity.WorkerActivity{contrib.NewShellActivity()})
+	client, err := api.New("localhost", 14514, []activity.WorkerActivity{contrib.NewShellActivity(), contrib.NewHTTPActivity()})
 	if err != nil {
 		panic(err)
 	}

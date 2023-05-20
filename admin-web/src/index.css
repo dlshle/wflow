@@ -1,0 +1,54 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #d1dbee;
+  min-height: 100vh;
+  font-size: calc(10px + 1vmin);
+  color: rgb(21, 20, 20);
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* has to assign height for div for it to be scrollable */
+div.scroll {
+  background-color: #000000;
+  /*width: 600px;*/
+  height: 84vh;
+  /*overflow-x: hidden;*/
+  overflow-y: scroll;
+  /*text-align: center;*/
+  padding: 20px;
+}
+
+button {
+  font-size: calc(10px + 1vmin);
+}
+
+input {
+  font-size: calc(10px + 1vmin);
+  width: 69vh;
+}
+
+table {
+  font-size: calc(8px + 1vmin);
+  width: 100vw;
+  border-spacing: 1.5px;
+  margin-left:auto;
+  margin-right:auto;
+  border: 1px solid rgb(29, 29, 29);
+}
+
+tr:hover {
+  border: 1px solid blue;
+}
+
+td:hover {
+  background-color: rgb(31, 31, 31);
+}

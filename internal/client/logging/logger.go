@@ -29,7 +29,7 @@ func NewWFlowLogWriter(ctx context.Context, jobID string, serverConn protocol.Se
 		jobID:      jobID,
 		logs:       make([]*proto.JobLog, 0),
 		mu:         new(sync.Mutex),
-		logger:     logging.GlobalLogger.WithPrefix("[WFlowLogWriter]"),
+		logger:     logging.GlobalLogger.WithPrefix("[WFlowLogWriter-" + jobID + "]"),
 	}
 	go w.logUploadJob()
 	return w
@@ -42,6 +42,7 @@ func (w *WFlowLogWriter) logUploadJob() {
 		case <-ticker.C:
 			w.safeWriteLogs()
 		case <-w.ctx.Done():
+			w.logger.Infof(w.ctx, "job %s log writer is completed, sending last %d logs", w.jobID, len(w.logs))
 			w.safeWriteLogs()
 			return
 		}
@@ -66,13 +67,18 @@ func (w *WFlowLogWriter) Write(entity *logging.LogEntity) {
 func (w *WFlowLogWriter) safeWriteLogs() {
 	copied := make([]*proto.JobLog, len(w.logs), len(w.logs))
 	w.withLock(func() {
-		copy(copied, w.logs)
+		for i, l := range w.logs {
+			copied[i] = l
+		}
 		w.logs = make([]*proto.JobLog, 0)
 	})
-	w.tryUploadLogs(w.logs)
+	w.tryUploadLogs(copied)
 }
 
 func (w *WFlowLogWriter) tryUploadLogs(logs []*proto.JobLog) {
+	if logs == nil || len(logs) == 0 {
+		return
+	}
 	uploadLogsRequest := &proto.WrappedLogs{
 		Logs: logs,
 	}
@@ -98,7 +104,16 @@ func (w *WFlowLogWriter) doUploadLogsWithRetry(r *proto.Message) (err error) {
 	for i := 0; i < 3; i++ {
 		resp, err = w.serverConn.Request(r)
 		if err == nil {
+			if resp == nil {
+				errMsg := "received nil response without error"
+				w.logger.Error(w.ctx, errMsg)
+				err = errors.Error(errMsg)
+			}
 			return
+		}
+		if err != nil {
+			w.logger.Errorf(w.ctx, "failed to upload logs, retrying...: %s", err.Error())
+			continue
 		}
 		if resp.Status != proto.Status_OK {
 			err = errors.Error(string(resp.Payload))

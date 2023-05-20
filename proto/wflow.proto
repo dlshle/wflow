@@ -70,6 +70,7 @@ message JobReport {
     bytes result = 3;
     int32 job_started_time_seconds = 4;
     JobStatus status = 5;
+    string failure_reason = 6;
 }
 
 message Worker {

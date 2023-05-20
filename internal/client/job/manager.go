@@ -247,7 +247,7 @@ func (m *jobManager) processJob(jobID string) {
 	defer loggingCancelFunc()
 	jobLogger := logging.GlobalLogger.WithWriter(wlogging.NewWFlowLogWriter(remoteLogginCtx, jobID, m.serverConn))
 	m.logger.Info(jobCtx, "process job "+jobID)
-	jobLogger.Infof(jobCtx, "process job %s started", jobID)
+	jobLogger.Infof(jobCtx, "job %s started", jobID)
 	jobReport.Status = proto.JobStatus_RUNNING
 	workerActivity := m.workerActivities[jobReport.Job.ActivityId]
 	m.reportJobStatus(jobReport) // we can do this in async
@@ -259,10 +259,10 @@ func (m *jobManager) processJob(jobID string) {
 		return
 	}
 	if err != nil {
-		jobLogger.Info(jobCtx, "job is cancelled, ignoring job results and error")
+		jobLogger.Info(jobCtx, "job failed due to "+err.Error())
 		jobReport.Status = proto.JobStatus_FAILED
+		jobReport.FailureReason = err.Error()
 	} else {
-		jobLogger.Info(jobCtx, "job is cancelled, ignoring job results and error")
 		jobReport.Status = proto.JobStatus_SUCCESS
 		jobReport.Result = result
 	}
