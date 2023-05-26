@@ -1,7 +1,8 @@
 import 'antd/dist/reset.css';
+import { Frame } from './components/home/Home';
 
 function App() {
-  return <p>hello</p>
+  return <Frame />;
 }
 
 export default App

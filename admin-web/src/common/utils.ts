@@ -1,5 +1,7 @@
 import { IdEntity, IdEntityDiffer } from './IdEntity';
 
+const textDecoder = new TextDecoder('utf8');
+
 export const sleep = (n: number): Promise<void> => new Promise<void>((r) => setTimeout(() => r(), n));
 
 export const doRetry = async <T>(action: () => Promise<T>, retryCount: number, retryInterval: number = 0): Promise<T> => {
@@ -69,3 +71,5 @@ export const getCurrentQueryParams = (): Record<string, string> => {
     });
     return result;
 };
+
+export const uint8ToBase64 = (u8: Uint8Array): string => btoa(textDecoder.decode(u8));

@@ -5,11 +5,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "protoc": "protoc -I=../proto --ts_out=./src/lib/types wflow.proto --ts_opt=no_namespace"
   },
   "dependencies": {
     "antd": "^5.3.2",
     "dexie": "^3.2.2",
+    "google-protobuf": "^3.21.2",
     "lodash": "^4.17.21",
     "react": "^17.0.2",
     "react-dom": "^17.0.2"
@@ -20,6 +22,7 @@
     "@types/react-dom": "^17.0.10",
     "@types/react-syntax-highlighter": "^15.5.6",
     "@vitejs/plugin-react": "^1.0.7",
+    "protoc-gen-ts": "^0.8.6",
     "typescript": "^4.5.4",
     "vite": "^2.9.0"
   }
