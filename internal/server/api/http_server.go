@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
+	"github.com/dlshle/aghs/contrib/middlewares"
 	"github.com/dlshle/aghs/server"
 	"github.com/dlshle/gommon/logging"
 	"github.com/dlshle/wflow/internal/server/service"
@@ -23,7 +24,7 @@ type DispatchJobRequest struct {
 }
 
 func NewHTTPServer(port int, adminService service.AdminService) (*httpServer, error) {
-	marshaller := jsonpb.Marshaler{}
+	marshaller := jsonpb.Marshaler{OrigName: true}
 	adminHTTPServerService, err := server.NewServiceBuilder().
 		Id("adminService").
 		WithRouteHandlers(server.PathHandlerBuilder("/activeWorkers").
@@ -153,11 +154,63 @@ func NewHTTPServer(port int, adminService service.AdminService) (*httpServer, er
 				}
 				return server.NewResponse(200, activityData)
 			}).MustBuild().HandleRequest).Build()).
+		WithRouteHandlers(server.PathHandlerBuilder("/activities/:id/workers").
+			Get(server.NewCHandlerBuilder[any]().OnRequest(func(c server.CHandle[any]) server.Response {
+				activityID := c.PathParam("id")
+				ctx := context.Background()
+				ctx = logging.WrapCtx(ctx, "adminService", "GetActivityByID")
+				ctx = logging.WrapCtx(ctx, "activityID", activityID)
+				workers, err := adminService.GetWorkersByActivityID(ctx, activityID)
+				if err != nil {
+					return server.NewResponse(500, err.Error())
+				}
+				activityData, err := marshaller.MarshalToString(&proto.AdminWorkersResponse{Workers: workers})
+				if err != nil {
+					return server.NewResponse(500, err.Error())
+				}
+				return server.NewResponse(200, activityData)
+			}).MustBuild().HandleRequest).Build()).
+		WithRouteHandlers(server.PathHandlerBuilder("/activeActivities").
+			Get(server.NewCHandlerBuilder[any]().OnRequest(func(c server.CHandle[any]) server.Response {
+				ctx := context.Background()
+				ctx = logging.WrapCtx(ctx, "adminService", "GetActiveActivities")
+				activeActivities, err := adminService.ListAllActiveActivities(ctx)
+				if err != nil {
+					return server.NewResponse(500, err.Error())
+				}
+				activeActivitiesMap := make(map[string]*proto.Activity)
+				for _, activity := range activeActivities {
+					activeActivitiesMap[activity.Id] = activity
+				}
+				activityData, err := marshaller.MarshalToString(&proto.AdminActivitiesResponse{Activities: activeActivitiesMap})
+				if err != nil {
+					return server.NewResponse(500, err.Error())
+				}
+				return server.NewResponse(200, activityData)
+			}).MustBuild().HandleRequest).Build()).
+		WithRouteHandlers(server.PathHandlerBuilder("/activities").
+			Get(server.NewCHandlerBuilder[any]().OnRequest(func(c server.CHandle[any]) server.Response {
+				ctx := context.Background()
+				ctx = logging.WrapCtx(ctx, "adminService", "GetActivitiesWithJobIDs")
+				activitiesWithJobIDs, err := adminService.ListAllActivitiesWithJobIDs(ctx)
+				if err != nil {
+					return server.NewResponse(500, err.Error())
+				}
+				activeActivitiesMap := make(map[string]*proto.ActivityWithJobIDs)
+				for _, activity := range activitiesWithJobIDs {
+					activeActivitiesMap[activity.Activity.Id] = activity
+				}
+				activityData, err := marshaller.MarshalToString(&proto.AdminActivitiesWithJobIDsResponse{Activities: activeActivitiesMap})
+				if err != nil {
+					return server.NewResponse(500, err.Error())
+				}
+				return server.NewResponse(200, activityData)
+			}).MustBuild().HandleRequest).Build()).
 		Build()
 	if err != nil {
 		return nil, err
 	}
-	actualHTTPServer, err := server.NewBuilder().WithService(adminHTTPServerService).Address(fmt.Sprintf("0.0.0.0:%d", port)).Build()
+	actualHTTPServer, err := server.NewBuilder().WithMiddleware(middlewares.CORSAllowWildcardMiddleware).WithService(adminHTTPServerService).Address(fmt.Sprintf("0.0.0.0:%d", port)).Build()
 	if err != nil {
 		return nil, err
 	}

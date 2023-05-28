@@ -9,6 +9,8 @@ type Handler interface {
 	Get(id string) (*proto.Activity, error)
 	Put(activity *proto.Activity) (*proto.Activity, error)
 	TxPut(tx store.SQLTransactional, activity *proto.Activity) (*proto.Activity, error)
+	GetAll() ([]*proto.Activity, error)
+	TxGetAll(tx store.SQLTransactional) ([]*proto.Activity, error)
 }
 
 func NewHandler(store Store) Handler {
@@ -29,4 +31,12 @@ func (h *handler) Put(activity *proto.Activity) (*proto.Activity, error) {
 
 func (h *handler) TxPut(tx store.SQLTransactional, activity *proto.Activity) (*proto.Activity, error) {
 	return h.store.TxPut(tx, activity)
+}
+
+func (h *handler) GetAll() ([]*proto.Activity, error) {
+	return h.store.GetAll()
+}
+
+func (h *handler) TxGetAll(tx store.SQLTransactional) ([]*proto.Activity, error) {
+	return h.store.TxGetAll(tx)
 }

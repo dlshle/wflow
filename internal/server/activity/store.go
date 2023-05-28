@@ -15,6 +15,8 @@ type Store interface {
 	Put(activity *proto.Activity) (*proto.Activity, error)
 	TxPut(tx store.SQLTransactional, activity *proto.Activity) (*proto.Activity, error)
 	TxDelete(tx store.SQLTransactional, id string) error
+	GetAll() ([]*proto.Activity, error)
+	TxGetAll(tx store.SQLTransactional) ([]*proto.Activity, error)
 }
 
 type activityStore struct {
@@ -50,12 +52,12 @@ func (s *activityStore) Put(activity *proto.Activity) (*proto.Activity, error) {
 }
 
 func (s *activityStore) TxPut(tx store.SQLTransactional, activity *proto.Activity) (*proto.Activity, error) {
+	if activity.Id == "" {
+		activity.Id = wutil.RandomUUID()
+	}
 	activityData, err := gproto.Marshal(activity)
 	if err != nil {
 		return nil, err
-	}
-	if activity.Id == "" {
-		activity.Id = wutil.RandomUUID()
 	}
 	updatedPBEntity, err := s.pbEntityStore.TxPut(tx, &store.PBEntity{activity.Id, activityData, time.Now()})
 	if err != nil {
@@ -67,4 +69,25 @@ func (s *activityStore) TxPut(tx store.SQLTransactional, activity *proto.Activit
 
 func (s *activityStore) TxDelete(tx store.SQLTransactional, id string) error {
 	return s.pbEntityStore.TxDelete(tx, id)
+}
+
+func (s *activityStore) GetAll() ([]*proto.Activity, error) {
+	return s.TxGetAll(s.pbEntityStore.GetDB())
+}
+
+func (s *activityStore) TxGetAll(tx store.SQLTransactional) ([]*proto.Activity, error) {
+	entities, err := s.pbEntityStore.TxGetAll(tx)
+	if err != nil {
+		return nil, err
+	}
+	activities := make([]*proto.Activity, len(entities), len(entities))
+	for i, entity := range entities {
+		activity := &proto.Activity{}
+		err = gproto.Unmarshal(entity.Payload, activity)
+		if err != nil {
+			return nil, err
+		}
+		activities[i] = activity
+	}
+	return activities, nil
 }

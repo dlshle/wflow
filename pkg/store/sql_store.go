@@ -33,7 +33,7 @@ func (s *SQLPBEntityStore) Get(id string) (*PBEntity, error) {
 
 func (s *SQLPBEntityStore) TxGet(tx SQLTransactional, id string) (*PBEntity, error) {
 	entities := []PBEntity{}
-	err := tx.Select(&entities, "SELECT * FROM "+s.tableName+" WHERE id = $1", id)
+	err := tx.Select(&entities, "SELECT id, payload, created_at FROM "+s.tableName+" WHERE id = $1", id)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (s *SQLPBEntityStore) TxBulkGet(tx SQLTransactional, ids []string) ([]*PBEn
 	if len(ids) == 0 {
 		return []*PBEntity{}, nil
 	}
-	sql := "SELECT * FROM " + s.tableName + " WHERE id IN " + MakeInQueryClause(ids)
+	sql := "SELECT id, payload, created_at FROM " + s.tableName + " WHERE id IN " + MakeInQueryClause(ids)
 	logging.GlobalLogger.Infof(context.Background(), "query sql: %s", sql)
 	err := tx.Select(&entities, sql)
 	if err != nil {
@@ -57,6 +57,23 @@ func (s *SQLPBEntityStore) TxBulkGet(tx SQLTransactional, ids []string) ([]*PBEn
 	pbEntities := make([]*PBEntity, len(entities), len(entities))
 	for i, entity := range entities {
 		pbEntities[i] = &entity
+	}
+	return pbEntities, err
+}
+
+func (s *SQLPBEntityStore) GetAll() ([]*PBEntity, error) {
+	return s.TxGetAll(s.Db)
+}
+
+func (s *SQLPBEntityStore) TxGetAll(tx SQLTransactional) ([]*PBEntity, error) {
+	entities := []PBEntity{}
+	err := tx.Select(&entities, "SELECT id, payload, created_at FROM "+s.tableName)
+	if err != nil {
+		return nil, err
+	}
+	pbEntities := make([]*PBEntity, len(entities), len(entities))
+	for i := range entities {
+		pbEntities[i] = &entities[i]
 	}
 	return pbEntities, err
 }

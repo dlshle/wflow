@@ -31,12 +31,13 @@ type JobManager interface {
 	Job(string) (*proto.JobReport, error)
 	IsReady() bool
 	WorkerInfo() *proto.Worker
-	InitReportingServer(protocol.ServerConnection) error
+	InitReportingServer(protocol.ServerConnection, *proto.Server) error
 }
 
 type jobManager struct {
 	ctx              context.Context
 	serverConn       protocol.ServerConnection
+	serverInfo       *proto.Server
 	workerID         string
 	logger           logging.Logger
 	workerActivities map[string]activity.WorkerActivity
@@ -138,17 +139,24 @@ func (m *jobManager) ActiveJobIDs() (res []string) {
 }
 
 func (m *jobManager) WorkerInfo() *proto.Worker {
-	return &proto.Worker{
+	worker := &proto.Worker{
 		Id:                  m.workerID,
 		SystemStat:          utils.GetSystemStat(),
 		ActiveJobs:          m.ActiveJobIDs(),
 		SupportedActivities: m.SupportedActivities(),
 		WorkerStatus:        m.getWorkerStatus(),
 	}
+	if m.serverInfo != nil {
+		worker.ConnectedServer = &m.serverInfo.Id
+	}
+	return worker
 }
 
-func (m *jobManager) InitReportingServer(sc protocol.ServerConnection) error {
+func (m *jobManager) InitReportingServer(sc protocol.ServerConnection, server *proto.Server) error {
 	m.serverConn = sc
+	if server != nil {
+		m.serverInfo = server
+	}
 	return m.reportForWorkerReady()
 }
 
@@ -209,23 +217,25 @@ func (m *jobManager) Handle(ctx context.Context, job *proto.Job) error {
 	if m.workerActivities[job.ActivityId] == nil {
 		return errors.Error("can not find activity handler for job " + job.Id + " with activity " + job.ActivityId)
 	}
-	m.setCancellableJob(job.Id, m.generateInitalJobReport(job))
+	jobReport := m.generateInitalJobReport(job)
+	m.setCancellableJob(job.Id, jobReport)
 	m.scheduleJob(job.Id)
+	m.reportJobStatus(jobReport) // report dispatched
 	return nil
 }
 
 func (m *jobManager) generateInitalJobReport(job *proto.Job) *cancellableJobReport {
 	jobCtx, cancelFunc := context.WithCancel(m.ctx)
 	jobCtx = logging.WrapCtx(m.ctx, "job_id", job.Id)
+	job.DispatchTimeInSeconds = int32(time.Now().Unix())
 	return &cancellableJobReport{
 		jobCtx:     jobCtx,
 		cancelFunc: cancelFunc,
 		JobReport: &proto.JobReport{
-			Job:                   job,
-			Result:                nil,
-			JobStartedTimeSeconds: int32(time.Now().Unix()),
-			WorkerId:              m.workerID,
-			Status:                proto.JobStatus_DISPATCHED,
+			Job:      job,
+			Result:   nil,
+			WorkerId: m.workerID,
+			Status:   proto.JobStatus_DISPATCHED,
 		},
 	}
 }
@@ -248,9 +258,10 @@ func (m *jobManager) processJob(jobID string) {
 	jobLogger := logging.GlobalLogger.WithWriter(wlogging.NewWFlowLogWriter(remoteLogginCtx, jobID, m.serverConn))
 	m.logger.Info(jobCtx, "process job "+jobID)
 	jobLogger.Infof(jobCtx, "job %s started", jobID)
+	jobReport.JobStartedTimeSeconds = int32(time.Now().Unix())
 	jobReport.Status = proto.JobStatus_RUNNING
 	workerActivity := m.workerActivities[jobReport.Job.ActivityId]
-	m.reportJobStatus(jobReport) // we can do this in async
+	m.reportJobStatus(jobReport) // report started
 	result, err := workerActivity.Handler()(jobCtx, jobLogger, jobReport.Job.Param)
 	jobLogger.Infof(jobCtx, "job %s completed, err = %v", jobID, err)
 	// before statuses are set, check if job is cancelled

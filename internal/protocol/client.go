@@ -19,6 +19,7 @@ import (
 type TCPClient interface {
 	Request(*proto.Message) (*proto.Message, error)
 	Connect() (ServerConnection, error)
+	ServerInfo() *proto.Server
 	Close() error
 }
 
@@ -33,10 +34,10 @@ type tcpClient struct {
 	supportedActivities []*proto.Activity
 	connectedServer     *proto.Server
 	serverConn          ServerConnection
-	onConnRecovered     func(ServerConnection)
+	onConnRecovered     func(ServerConnection, *proto.Server)
 }
 
-func NewTCPClient(id, address string, port int, messageHandler MessageHandler, supportedActivities []*proto.Activity, onConnRecovered func(ServerConnection)) TCPClient {
+func NewTCPClient(id, address string, port int, messageHandler MessageHandler, supportedActivities []*proto.Activity, onProtocolExchanged func(ServerConnection, *proto.Server)) TCPClient {
 	rawClient := gts.NewTCPClient(address, port)
 	c := &tcpClient{
 		ctx:                 logging.WrapCtx(context.Background(), "client_id", id),
@@ -46,7 +47,7 @@ func NewTCPClient(id, address string, port int, messageHandler MessageHandler, s
 		notificationEmitter: notification.New[*proto.Message](DefaultMaxNotificationListeners),
 		asyncPool:           async.NewAsyncPool(id, DefaultMaxPoolSize, DefaultMaxAsyncPoolWorkerSize),
 		supportedActivities: supportedActivities,
-		onConnRecovered:     onConnRecovered,
+		onConnRecovered:     onProtocolExchanged,
 		tcpClient:           rawClient,
 	}
 	c.init()
@@ -80,6 +81,10 @@ func (c *tcpClient) init() {
 
 		c.healthCheckRoutine()
 	})
+}
+
+func (c *tcpClient) ServerInfo() *proto.Server {
+	return c.connectedServer
 }
 
 func (c *tcpClient) Connect() (ServerConnection, error) {
@@ -195,7 +200,7 @@ func (c *tcpClient) serverReconnectingLoop() {
 		conn, err := c.Connect()
 		if err == nil {
 			c.logger.Info(c.ctx, "server is reconnected")
-			c.onConnRecovered(conn)
+			c.onConnRecovered(conn, c.ServerInfo())
 			consecutiveFailures = 0
 			return
 		}

@@ -6,6 +6,7 @@ import (
 )
 
 type Handler interface {
+	ListJobIDsByActivityID(activityID string) ([]string, error)
 	Get(id string) (*proto.JobReport, error)
 	Put(jobReport *proto.JobReport) (*proto.JobReport, error)
 }
@@ -25,4 +26,8 @@ func (h *jobHandler) Get(id string) (*proto.JobReport, error) {
 
 func (h *jobHandler) Put(jobReport *proto.JobReport) (*proto.JobReport, error) {
 	return h.store.Put(jobReport)
+}
+
+func (h *jobHandler) ListJobIDsByActivityID(activityID string) ([]string, error) {
+	return h.store.ListJobIDsByActivityID(activityID)
 }

@@ -1,6 +1,7 @@
 import React from 'react';
 import {Activity} from '../../lib/types';
 import {Card} from 'antd';
+import { JobDispatchView } from './JobDispatchView';
 
 export type ActivityModelProps = {
     activity: Activity;
@@ -13,6 +14,7 @@ export const ActivityView = (props: ActivityModelProps) => {
             <p>Activity ID: {activity.id}</p>
             <p>Activity Name: {activity.name}</p>
             <p>Activity Description: {activity.description}</p>
+            <JobDispatchView activity={activity}/>
         </>
     );
 };

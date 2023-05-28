@@ -660,6 +660,99 @@ export class JobReport extends pb_1.Message {
         return JobReport.deserialize(bytes);
     }
 }
+export class ActivityWithJobIDs extends pb_1.Message {
+    #one_of_decls: number[][] = [];
+    constructor(data?: any[] | {
+        activity?: Activity;
+        job_ids?: string[];
+    }) {
+        super();
+        pb_1.Message.initialize(this, Array.isArray(data) ? data : [], 0, -1, [2], this.#one_of_decls);
+        if (!Array.isArray(data) && typeof data == "object") {
+            if ("activity" in data && data.activity != undefined) {
+                this.activity = data.activity;
+            }
+            if ("job_ids" in data && data.job_ids != undefined) {
+                this.job_ids = data.job_ids;
+            }
+        }
+    }
+    get activity() {
+        return pb_1.Message.getWrapperField(this, Activity, 1) as Activity;
+    }
+    set activity(value: Activity) {
+        pb_1.Message.setWrapperField(this, 1, value);
+    }
+    get has_activity() {
+        return pb_1.Message.getField(this, 1) != null;
+    }
+    get job_ids() {
+        return pb_1.Message.getFieldWithDefault(this, 2, []) as string[];
+    }
+    set job_ids(value: string[]) {
+        pb_1.Message.setField(this, 2, value);
+    }
+    static fromObject(data: {
+        activity?: ReturnType<typeof Activity.prototype.toObject>;
+        job_ids?: string[];
+    }): ActivityWithJobIDs {
+        const message = new ActivityWithJobIDs({});
+        if (data.activity != null) {
+            message.activity = Activity.fromObject(data.activity);
+        }
+        if (data.job_ids != null) {
+            message.job_ids = data.job_ids;
+        }
+        return message;
+    }
+    toObject() {
+        const data: {
+            activity?: ReturnType<typeof Activity.prototype.toObject>;
+            job_ids?: string[];
+        } = {};
+        if (this.activity != null) {
+            data.activity = this.activity.toObject();
+        }
+        if (this.job_ids != null) {
+            data.job_ids = this.job_ids;
+        }
+        return data;
+    }
+    serialize(): Uint8Array;
+    serialize(w: pb_1.BinaryWriter): void;
+    serialize(w?: pb_1.BinaryWriter): Uint8Array | void {
+        const writer = w || new pb_1.BinaryWriter();
+        if (this.has_activity)
+            writer.writeMessage(1, this.activity, () => this.activity.serialize(writer));
+        if (this.job_ids.length)
+            writer.writeRepeatedString(2, this.job_ids);
+        if (!w)
+            return writer.getResultBuffer();
+    }
+    static deserialize(bytes: Uint8Array | pb_1.BinaryReader): ActivityWithJobIDs {
+        const reader = bytes instanceof pb_1.BinaryReader ? bytes : new pb_1.BinaryReader(bytes), message = new ActivityWithJobIDs();
+        while (reader.nextField()) {
+            if (reader.isEndGroup())
+                break;
+            switch (reader.getFieldNumber()) {
+                case 1:
+                    reader.readMessage(message.activity, () => message.activity = Activity.deserialize(reader));
+                    break;
+                case 2:
+                    pb_1.Message.addToRepeatedField(message, 2, reader.readString());
+                    break;
+                default: reader.skipField();
+            }
+        }
+        return message;
+    }
+    serializeBinary(): Uint8Array {
+        return this.serialize();
+    }
+    static deserializeBinary(bytes: Uint8Array): ActivityWithJobIDs {
+        return ActivityWithJobIDs.deserialize(bytes);
+    }
+}
 export class Worker extends pb_1.Message {
     #one_of_decls: number[][] = [[4]];
     constructor(data?: any[] | ({
@@ -1607,5 +1700,86 @@ export class AdminActivitiesResponse extends pb_1.Message {
     }
     static deserializeBinary(bytes: Uint8Array): AdminActivitiesResponse {
         return AdminActivitiesResponse.deserialize(bytes);
+    }
+}
+export class AdminActivitiesWithJobIDsResponse extends pb_1.Message {
+    #one_of_decls: number[][] = [];
+    constructor(data?: any[] | {
+        activities?: Map<string, ActivityWithJobIDs>;
+    }) {
+        super();
+        pb_1.Message.initialize(this, Array.isArray(data) ? data : [], 0, -1, [], this.#one_of_decls);
+        if (!Array.isArray(data) && typeof data == "object") {
+            if ("activities" in data && data.activities != undefined) {
+                this.activities = data.activities;
+            }
+        }
+        if (!this.activities)
+            this.activities = new Map();
+    }
+    get activities() {
+        return pb_1.Message.getField(this, 1) as any as Map<string, ActivityWithJobIDs>;
+    }
+    set activities(value: Map<string, ActivityWithJobIDs>) {
+        pb_1.Message.setField(this, 1, value as any);
+    }
+    static fromObject(data: {
+        activities?: {
+            [key: string]: ReturnType<typeof ActivityWithJobIDs.prototype.toObject>;
+        };
+    }): AdminActivitiesWithJobIDsResponse {
+        const message = new AdminActivitiesWithJobIDsResponse({});
+        if (typeof data.activities == "object") {
+            message.activities = new Map(Object.entries(data.activities).map(([key, value]) => [key, ActivityWithJobIDs.fromObject(value)]));
+        }
+        return message;
+    }
+    toObject() {
+        const data: {
+            activities?: {
+                [key: string]: ReturnType<typeof ActivityWithJobIDs.prototype.toObject>;
+            };
+        } = {};
+        if (this.activities != null) {
+            data.activities = (Object.fromEntries)((Array.from)(this.activities).map(([key, value]) => [key, value.toObject()]));
+        }
+        return data;
+    }
+    serialize(): Uint8Array;
+    serialize(w: pb_1.BinaryWriter): void;
+    serialize(w?: pb_1.BinaryWriter): Uint8Array | void {
+        const writer = w || new pb_1.BinaryWriter();
+        for (const [key, value] of this.activities) {
+            writer.writeMessage(1, this.activities, () => {
+                writer.writeString(1, key);
+                writer.writeMessage(2, value, () => value.serialize(writer));
+            });
+        }
+        if (!w)
+            return writer.getResultBuffer();
+    }
+    static deserialize(bytes: Uint8Array | pb_1.BinaryReader): AdminActivitiesWithJobIDsResponse {
+        const reader = bytes instanceof pb_1.BinaryReader ? bytes : new pb_1.BinaryReader(bytes), message = new AdminActivitiesWithJobIDsResponse();
+        while (reader.nextField()) {
+            if (reader.isEndGroup())
+                break;
+            switch (reader.getFieldNumber()) {
+                case 1:
+                    reader.readMessage(message, () => pb_1.Map.deserializeBinary(message.activities as any, reader, reader.readString, () => {
+                        let value;
+                        reader.readMessage(message, () => value = ActivityWithJobIDs.deserialize(reader));
+                        return value;
+                    }));
+                    break;
+                default: reader.skipField();
+            }
+        }
+        return message;
+    }
+    serializeBinary(): Uint8Array {
+        return this.serialize();
+    }
+    static deserializeBinary(bytes: Uint8Array): AdminActivitiesWithJobIDsResponse {
+        return AdminActivitiesWithJobIDsResponse.deserialize(bytes);
     }
 }

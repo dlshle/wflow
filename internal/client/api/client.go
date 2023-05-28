@@ -48,8 +48,8 @@ func New(address string, port int, workerActivities []activity.WorkerActivity) (
 		proto.Type_QUERY_JOB:           {message_processors.CreateQueryJobProcessor(jobManager)},
 		proto.Type_QUERY_WORKER_STATUS: {message_processors.CreateQueryWorkerStatusProcessor(workerID, jobManager)},
 	})
-	tcpClient := protocol.NewTCPClient(workerID, address, port, messageHandler, jobManager.SupportedActivities(), func(c protocol.ServerConnection) {
-		jobManager.InitReportingServer(c)
+	tcpClient := protocol.NewTCPClient(workerID, address, port, messageHandler, jobManager.SupportedActivities(), func(c protocol.ServerConnection, s *proto.Server) {
+		jobManager.InitReportingServer(c, s)
 	})
 	return &workerClient{
 		ctx:        context.Background(),
@@ -98,7 +98,7 @@ func (c *workerClient) Start() error {
 		return err
 	}
 	c.logger.Infof(c.ctx, "server %s connected", serverConn.Address())
-	return c.jobManager.InitReportingServer(serverConn)
+	return c.jobManager.InitReportingServer(serverConn, c.tcpClient.ServerInfo())
 }
 
 func (c *workerClient) Close() error {

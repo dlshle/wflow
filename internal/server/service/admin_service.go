@@ -19,7 +19,8 @@ type AdminService interface {
 	GetWorker(ctx context.Context, workerID string) (*proto.Worker, error)
 	GetActivity(ctx context.Context, activityID string) (*proto.Activity, error)
 	ListAllActiveActivities(ctx context.Context) ([]*proto.Activity, error)
-	GetWorkersByActivityID(ctx context.Context, activityID string) ([]*proto.Worker, error)
+	GetWorkersByActivityID(ctx context.Context, activityID string) (map[string]*proto.Worker, error)
+	ListAllActivitiesWithJobIDs(ctx context.Context) ([]*proto.ActivityWithJobIDs, error)
 	GetJobByID(ctx context.Context, jobID string) (*proto.JobReport, error)
 	CancelJob(ctx context.Context, jobID string) error
 	GetLogsByJobID(ctx context.Context, jobID string) ([]*proto.JobLog, error)
@@ -55,6 +56,22 @@ func (s *adminService) ListAllActiveWorkers(ctx context.Context) ([]*proto.Worke
 	return s.workerManager.GetWorkerByIDs(workerIDs)
 }
 
+func (s *adminService) ListAllActivitiesWithJobIDs(ctx context.Context) ([]*proto.ActivityWithJobIDs, error) {
+	allActivities, err := s.activityHandler.GetAll()
+	if err != nil {
+		return nil, err
+	}
+	activityWithJobIDs := make([]*proto.ActivityWithJobIDs, len(allActivities), len(allActivities))
+	for i, activity := range allActivities {
+		jobIDs, err := s.jobHandler.ListJobIDsByActivityID(activity.Id)
+		if err != nil {
+			return nil, err
+		}
+		activityWithJobIDs[i] = &proto.ActivityWithJobIDs{Activity: activity, JobIds: jobIDs}
+	}
+	return activityWithJobIDs, nil
+}
+
 func (s *adminService) DisconnectWorker(ctx context.Context, workerID string) error {
 	return s.workerManager.DisconnectWorker(ctx, workerID)
 }
@@ -76,8 +93,24 @@ func (s *adminService) ListAllActiveActivities(ctx context.Context) ([]*proto.Ac
 	return s.relationMappingHandler.ListAllActiveActivities()
 }
 
-func (s *adminService) GetWorkersByActivityID(ctx context.Context, activityID string) ([]*proto.Worker, error) {
-	return s.relationMappingHandler.FindWorkersByActivityID(activityID)
+func (s *adminService) GetWorkersByActivityID(ctx context.Context, activityID string) (map[string]*proto.Worker, error) {
+	workers, err := s.relationMappingHandler.FindWorkersByActivityID(activityID)
+	if err != nil {
+		return nil, err
+	}
+	workersMap := make(map[string]*proto.Worker)
+	for _, worker := range workers {
+		workersMap[worker.Id] = worker
+	}
+	connectedWorkers := s.workerManager.GetConnectedWorkers()
+	for _, activeWorkerConn := range connectedWorkers {
+		activeWorker := workersMap[activeWorkerConn.ID()]
+		if activeWorker != nil {
+			x := ""
+			activeWorker.ConnectedServer = &x
+		}
+	}
+	return workersMap, nil
 }
 
 func (s *adminService) GetJobByID(ctx context.Context, jobID string) (*proto.JobReport, error) {
@@ -89,8 +122,8 @@ func (s *adminService) CancelJob(ctx context.Context, jobID string) error {
 }
 
 func (s *adminService) DispatchJob(ctx context.Context, activityID, workerID string, param []byte) (*proto.JobReport, error) {
-	if activityID == "" || workerID == "" {
-		return nil, errors.Error("activity or worker id is empty")
+	if activityID == "" {
+		return nil, errors.Error("activity id is empty")
 	}
 	return s.workerManager.DispatchJob(ctx, activityID, workerID, param)
 }

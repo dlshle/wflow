@@ -1,5 +1,5 @@
 import { HTTPClient, Request, Response } from "../http";
-import {AdminWorkersResponse, Worker, Job, JobLog, WrappedLogs as JobLogs} from '../types';
+import {AdminActivitiesResponse, AdminWorkersResponse, Worker, Job, JobLog, WrappedLogs as JobLogs, Activity, JobReport, AdminActivitiesWithJobIDsResponse, ActivityWithJobIDs} from '../types';
 
 export class AdminClient {
     private _httpClient: HTTPClient;
@@ -7,6 +7,22 @@ export class AdminClient {
     constructor(private _host: string) {
         this._httpClient = new HTTPClient();
     }
+
+    async getActiveActivities(): Promise<Activity[]> {
+        const response = await this._httpClient.request<AdminActivitiesResponse>({
+            path: `${this._host}/activeActivities`,
+            method: 'GET',
+        } as Request);
+        return [...this._handleResponse(response)?.activities?.values()];
+    };
+
+    async getActivities(): Promise<ActivityWithJobIDs[]> {
+        const response = await this._httpClient.request<AdminActivitiesWithJobIDsResponse>({
+            path: `${this._host}/activities`,
+            method: 'GET',
+        } as Request);
+        return [...Object.values(this._handleResponse(response)?.activities?? {})];
+    };
 
     async getActiveWorkers(): Promise<AdminWorkersResponse> {
         const response = await this._httpClient.request<AdminWorkersResponse>({
@@ -24,12 +40,12 @@ export class AdminClient {
         return this._handleResponse(response);    
     }
 
-    async getJob(jobID: string): Promise<Job> {
-        const response = await this._httpClient.request<Job>({
+    async getJob(jobID: string): Promise<JobReport> {
+        const response = await this._httpClient.request<JobReport>({
             path: `${this._host}/jobs/${jobID}`,
             method: 'GET',
         } as Request);
-        return this._handleResponse(response);    
+        return this._handleResponse(response);
     }
 
     async getJobLogs(jobID: string): Promise<JobLog[]> {
@@ -39,6 +55,21 @@ export class AdminClient {
         } as Request);
         const logs = this._handleResponse(response);
         return logs.logs;
+    }
+
+    async dispatchJob(activityID: string, base64EncodedParam: string, workerID?: string): Promise<JobReport> {
+        const requestBody = {
+            activityId: activityID,
+            payload: base64EncodedParam,
+        };
+        // @ts-ignore
+        workerID && (requestBody.workerId = workerID);
+        const response = await this._httpClient.request<JobReport>({
+            path: `${this._host}/jobs`,
+            method: 'POST',
+            body: requestBody,
+        } as Request);
+        return this._handleResponse(response);
     }
 
     private _handleResponse<T>(response: Response<T>): T {

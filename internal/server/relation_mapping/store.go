@@ -37,12 +37,14 @@ func (m *relationMappingStore) TxFindWorkersByActivityID(tx store.SQLTransaction
 	if err != nil {
 		return nil, err
 	}
-	workers := make([]*proto.Worker, len(pbEntities), len(pbEntities))
-	for i, entity := range pbEntities {
-		err = gproto.Unmarshal(entity.Payload, workers[i])
+	var workers []*proto.Worker
+	for _, entity := range pbEntities {
+		worker := &proto.Worker{}
+		err = gproto.Unmarshal(entity.Payload, worker)
 		if err != nil {
 			return nil, err
 		}
+		workers = append(workers, worker)
 	}
 	return workers, nil
 }
@@ -109,12 +111,14 @@ func (m *relationMappingStore) ListAllActiveActivities() ([]*proto.Activity, err
 	if err != nil {
 		return nil, err
 	}
-	activities := make([]*proto.Activity, len(pbEntities), len(pbEntities))
-	for i, entity := range pbEntities {
-		err = gproto.Unmarshal(entity.Payload, activities[i])
+	var activities []*proto.Activity
+	for _, entity := range pbEntities {
+		activity := &proto.Activity{}
+		err = gproto.Unmarshal(entity.Payload, activity)
 		if err != nil {
 			return nil, err
 		}
+		activities = append(activities, activity)
 	}
 	return activities, nil
 }

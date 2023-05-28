@@ -51,12 +51,13 @@ func (s *workerStore) Put(worker *proto.Worker) (*proto.Worker, error) {
 }
 
 func (s *workerStore) TxPut(tx store.SQLTransactional, worker *proto.Worker) (*proto.Worker, error) {
+	if worker.Id == "" {
+		worker.Id = wutil.RandomUUID()
+		worker.CreatedAtSeconds = time.Now().Unix()
+	}
 	workerData, err := gproto.Marshal(worker)
 	if err != nil {
 		return nil, err
-	}
-	if worker.Id == "" {
-		worker.Id = wutil.RandomUUID()
 	}
 	updatedPBEntity, err := s.pbEntityStore.TxPut(tx, &store.PBEntity{worker.Id, workerData, time.Now()})
 	if err != nil {

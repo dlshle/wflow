@@ -5,6 +5,7 @@ var Versions = []string{
 		id uuid,
 		payload bytea,
 		created_at timestamp default now(),
+		activity_id uuid,
 		PRIMARY KEY ( id )
 	);
 	

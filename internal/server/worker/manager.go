@@ -43,7 +43,6 @@ func NewManager(workerStore Store, relationMappingHandler relationmapping.Handle
 		jobHandler:             jobHandler,
 		activityHandler:        activityHandler,
 		rwLock:                 &sync.RWMutex{},
-		connectedWorkers:       make(map[string]protocol.WorkerConnection),
 	}
 }
 
@@ -56,7 +55,6 @@ type manager struct {
 	activityHandler        activity.Handler
 	server                 protocol.TCPServer
 	rwLock                 *sync.RWMutex
-	connectedWorkers       map[string]protocol.WorkerConnection
 }
 
 func (m *manager) withRead(cb func()) {
@@ -181,6 +179,21 @@ func (m *manager) DispatchJob(ctx context.Context, activityID, workerID string, 
 	ctx = logging.WrapCtx(ctx, "activityID", activityID)
 	ctx = logging.WrapCtx(ctx, "workerID", workerID)
 	// TODO: need to support job dispatching in offline mode
+	if workerID == "" {
+		foundWorkers, err := m.relationMappingHandler.FindWorkersByActivityID(activityID)
+		if err != nil {
+			return nil, errors.Error("can not find worker by activity " + activityID + " due to " + err.Error())
+		}
+		for _, worker := range foundWorkers {
+			if m.server.GetWorkerConnectionByID(worker.Id) != nil {
+				workerID = worker.Id
+				break
+			}
+		}
+		if workerID == "" {
+			return nil, errors.Error("can not find active worker for activity " + activityID)
+		}
+	}
 	workerConn := m.GetWorkerConnection(workerID)
 	if workerConn == nil {
 		return nil, errors.Error("worker " + workerID + " is not connected")
