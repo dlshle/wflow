@@ -60,8 +60,6 @@ func (c *generalConnection) Respond(m *proto.Message, status proto.Status, paylo
 	} else {
 		m.Payload = []byte{1}
 	}
-	// TODO remove later
-	logging.GlobalLogger.Debugf(context.Background(), "sending response %v", m)
 	return c.Send(m)
 }
 
@@ -94,8 +92,6 @@ func (c *generalConnection) requestWithTimeout(timeoutInMs int, m *proto.Message
 	}
 	defer disposable()
 	err = c.Send(m)
-	// TODO remove later
-	logging.GlobalLogger.Debugf(context.Background(), "sent request %v", m)
 	if err != nil {
 		return nil, err
 	}

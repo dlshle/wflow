@@ -45,11 +45,12 @@ func TestProtocol(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	err = serverConn.Send(&proto.Message{Id: "NeedsResponse", Type: proto.Type_CUSTOM})
+	resp, err := serverConn.Request(&proto.Message{Id: "NeedsResponse", Type: proto.Type_CUSTOM})
 	logging.GlobalLogger.Debugf(context.Background(), "sent NeedsResponse msg")
 	if err != nil {
 		panic(err)
 	}
+	logging.GlobalLogger.Debugf(context.Background(), "client received response: %v", resp)
 	time.Sleep(15 * time.Second)
 	// logging.GlobalLogger.Debugf(context.Background(), "received response %v", resp)
 	err = serverConn.Close()

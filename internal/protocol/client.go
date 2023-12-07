@@ -70,9 +70,6 @@ func (c *tcpClient) init() {
 			conn.Close()
 			return
 		}
-		// TODO remove later
-		conn.EnableLogging("client")
-		conn.UseV1Read()
 		byteMessageHandler := createHandler(c.messageHandler, c.notificationEmitter)
 		conn.OnMessage(func(b []byte) {
 			c.logger.Debugf(c.ctx, "received message %v from server %s", b, conn.Address())

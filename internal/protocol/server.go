@@ -152,8 +152,6 @@ func (s *tcpServer) init() {
 		c.OnMessage(func(b []byte) {
 			timer.Reset(10 * time.Second)
 			startTime = time.Now()
-			s.logger.Debugf(ctx, "received message from worker %s, resetting timeout", workerConn.ID())
-			// byteMessageHandler(ctx, workerConn, b)
 			s.asyncPool.Execute(func() {
 				byteMessageHandler(ctx, workerConn, b)
 			})
@@ -167,8 +165,6 @@ func (s *tcpServer) init() {
 			s.logger.Warn(ctx, "worker connection "+workerConn.ID()+" closed")
 			s.removeConnectedWorker(workerConn.ID(), generalConn)
 		})
-		// TODO remove later
-		c.EnableLogging("server")
 		c.UseV1Read()
 		s.asyncPool.Execute(c.ReadLoop)
 	})
