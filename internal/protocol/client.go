@@ -72,7 +72,6 @@ func (c *tcpClient) init() {
 		}
 		byteMessageHandler := createHandler(c.messageHandler, c.notificationEmitter)
 		conn.OnMessage(func(b []byte) {
-			c.logger.Debugf(c.ctx, "received message %v from server %s", b, conn.Address())
 			c.asyncPool.Execute(func() {
 				byteMessageHandler(c.ctx, c.serverConn, b)
 			})
