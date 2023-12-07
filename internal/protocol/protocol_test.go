@@ -18,6 +18,7 @@ func newLoggingMessageHandler(id string) MessageHandler {
 }
 
 func (h *loggingMessageHandler) Handle(ctx context.Context, gc GeneralConnection, m *proto.Message) error {
+	logging.GlobalLogger.Debugf(ctx, "logging message handler for {%s} received message %v", h.id, m)
 	if m.Id == "NeedsResponse" {
 		logging.GlobalLogger.Debugf(ctx, "{%s}: received message %v and will reply", h.id, m)
 		return gc.Respond(m, proto.Status_OK, []byte("response"))
