@@ -70,8 +70,12 @@ func (c *tcpClient) init() {
 			conn.Close()
 			return
 		}
+		// TODO remove later
+		conn.EnableLogging("client")
+		conn.UseV1Read()
 		byteMessageHandler := createHandler(c.messageHandler, c.notificationEmitter)
 		conn.OnMessage(func(b []byte) {
+			c.logger.Debugf(c.ctx, "received message %v from server %s", b, conn.Address())
 			c.asyncPool.Execute(func() {
 				byteMessageHandler(c.ctx, c.serverConn, b)
 			})
@@ -163,7 +167,8 @@ func (c *tcpClient) exchangeProtocolAndAttachServerConnection(conn gts.Connectio
 
 func (c *tcpClient) healthCheckRoutine() {
 	time.Sleep(time.Second)
-	timer := ctimer.New(time.Second*30, c.healthCheck)
+	c.logger.Debugf(c.ctx, "starting health check routine")
+	timer := ctimer.New(time.Second*5, c.healthCheck)
 	timer.WithAsyncPool(c.asyncPool)
 	timer.Repeat()
 }
@@ -182,6 +187,7 @@ func (c *tcpClient) healthCheck() {
 }
 
 func (c *tcpClient) doHealthCheck() error {
+	c.logger.Debugf(c.ctx, "performing health check")
 	mID, err := uuid.NewV4()
 	if err != nil {
 		return err

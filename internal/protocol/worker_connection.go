@@ -88,6 +88,10 @@ func (c *workerConnection) Address() string {
 	return c.getConn().Address()
 }
 
+func (c *workerConnection) IsActive() bool {
+	return c.getConn().IsActive()
+}
+
 func (c *workerConnection) Close() error {
 	multiErr := errors.NewMultiError()
 	for _, conn := range c.conns {

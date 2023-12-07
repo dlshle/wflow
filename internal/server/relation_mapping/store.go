@@ -122,3 +122,13 @@ func (m *relationMappingStore) ListAllActiveActivities() ([]*proto.Activity, err
 	}
 	return activities, nil
 }
+
+func (m *relationMappingStore) TxRemoveWorkerActivityMappings(tx store.SQLTransactional, workerID string) error {
+	_, err := tx.Exec("DELETE FROM activity_worker_mappings WHERE worker_id = $1", workerID)
+	return err
+}
+
+func (m *relationMappingStore) TxRemoveWorkerJobMappings(tx store.SQLTransactional, workerID string) error {
+	_, err := tx.Exec("DELETE FROM job_worker_mappings WHERE worker_id = $1", workerID)
+	return err
+}

@@ -1,8 +1,11 @@
 database:
-  host: localhost
-  port: 5432
-  username: postgres
-  password: postgres
+  host: 39.105.177.200
+  port: 15432
+  username: wflow
+  password: wflow
   database: wflow
 tcp_port: 14514
 http_port: 8080
+house_keeping:
+  clean_job_cron: "0 0 12 * * *" # runs at 12PM every day
+  keep_interval_hours: 720

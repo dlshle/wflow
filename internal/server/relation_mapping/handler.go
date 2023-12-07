@@ -5,6 +5,7 @@ import (
 
 	"github.com/dlshle/gommon/errors"
 	"github.com/dlshle/gommon/logging"
+	"github.com/dlshle/gommon/utils"
 	"github.com/dlshle/wflow/internal/server/activity"
 	"github.com/dlshle/wflow/pkg/store"
 	"github.com/dlshle/wflow/proto"
@@ -16,6 +17,7 @@ type Handler interface {
 	ListAllActiveActivities() ([]*proto.Activity, error)
 	TxUpdateWorkerJobs(ctx context.Context, tx store.SQLTransactional, worker *proto.Worker) error
 	TxUpdateWorkerActivities(ctx context.Context, tx store.SQLTransactional, worker *proto.Worker) error
+	DeleteWorkerMappings(ctx context.Context, workerID string) error
 }
 
 type handler struct {
@@ -42,6 +44,16 @@ func (h *handler) FindJobsByWorkerID(workerID string) ([]*proto.JobReport, error
 
 func (h *handler) FindWorkersByActivityID(activityID string) ([]*proto.Worker, error) {
 	return h.store.TxFindWorkersByActivityID(h.store.db, activityID)
+}
+
+func (h *handler) DeleteWorkerMappings(ctx context.Context, workerID string) error {
+	return store.WithSQLXTx(h.store.db, func(tx store.SQLTransactional) error {
+		return utils.ProcessWithErrors(func() error {
+			return h.store.TxRemoveWorkerActivityMappings(tx, workerID)
+		}, func() error {
+			return h.store.TxRemoveWorkerJobMappings(tx, workerID)
+		})
+	})
 }
 
 func (h *handler) TxUpdateWorkerJobs(ctx context.Context, tx store.SQLTransactional, worker *proto.Worker) error {

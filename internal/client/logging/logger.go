@@ -57,7 +57,7 @@ func (w *WFlowLogWriter) withLock(cb func()) {
 
 func (w *WFlowLogWriter) Write(entity *logging.LogEntity) {
 	w.mu.Lock()
-	w.logs = append(w.logs, &proto.JobLog{JobId: w.jobID, Message: entity.Message, Level: mapLogLevel(entity.Level), Timestamp: int32(entity.Timestamp.UnixMilli() / 1000), Contexts: entity.Context})
+	w.logs = append(w.logs, &proto.JobLog{JobId: w.jobID, Message: entity.Message, Level: mapLogLevel(entity.Level), Timestamp: int32(entity.Timestamp.Unix()), Contexts: entity.Context})
 	w.mu.Unlock()
 	if len(w.logs) >= 10 {
 		w.safeWriteLogs()

@@ -8,20 +8,29 @@ import (
 type Handler interface {
 	ListJobIDsByActivityID(activityID string) ([]string, error)
 	Get(id string) (*proto.JobReport, error)
+	GetInCompletedJobsByType(jobType proto.JobType) (jobs []*proto.JobReport, err error)
+	GetLatestJobByParentJobID(parentWorkerID string) (*proto.JobReport, error)
 	Put(jobReport *proto.JobReport) (*proto.JobReport, error)
 }
 
 type jobHandler struct {
-	store                  Store
+	store                  *jobStore
 	relationMappingHandler relationmapping.Handler
 }
 
-func NewHandler(store Store, relationMappingHandler relationmapping.Handler) Handler {
+func NewHandler(store *jobStore, relationMappingHandler relationmapping.Handler) Handler {
 	return &jobHandler{store, relationMappingHandler}
 }
 
 func (h *jobHandler) Get(id string) (*proto.JobReport, error) {
 	return h.store.Get(id)
+}
+func (h *jobHandler) GetInCompletedJobsByType(jobType proto.JobType) (jobs []*proto.JobReport, err error) {
+	return h.store.GetInCompletedJobsByType(jobType)
+}
+
+func (h *jobHandler) GetLatestJobByParentJobID(parentWorkerID string) (*proto.JobReport, error) {
+	return h.store.GetLatestJobByParentJobID(parentWorkerID)
 }
 
 func (h *jobHandler) Put(jobReport *proto.JobReport) (*proto.JobReport, error) {

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/dlshle/gommon/errors"
 	"github.com/dlshle/gommon/logging"
@@ -25,6 +26,7 @@ type AdminService interface {
 	CancelJob(ctx context.Context, jobID string) error
 	GetLogsByJobID(ctx context.Context, jobID string) ([]*proto.JobLog, error)
 	DispatchJob(ctx context.Context, activityID, workerID string, param []byte) (*proto.JobReport, error)
+	ScheduleJob(ctx context.Context, activityID, workerID string, param []byte, jobType proto.JobType, cron string, scheduledTime time.Time) (*proto.JobReport, error)
 }
 
 type adminService struct {
@@ -103,6 +105,7 @@ func (s *adminService) GetWorkersByActivityID(ctx context.Context, activityID st
 		workersMap[worker.Id] = worker
 	}
 	connectedWorkers := s.workerManager.GetConnectedWorkers()
+	// assign empty string to ConnectedServer field to indicate activity is schedulable
 	for _, activeWorkerConn := range connectedWorkers {
 		activeWorker := workersMap[activeWorkerConn.ID()]
 		if activeWorker != nil {
@@ -126,6 +129,27 @@ func (s *adminService) DispatchJob(ctx context.Context, activityID, workerID str
 		return nil, errors.Error("activity id is empty")
 	}
 	return s.workerManager.DispatchJob(ctx, activityID, workerID, param)
+}
+
+func (s *adminService) ScheduleJob(ctx context.Context, activityID, workerID string, param []byte, jobType proto.JobType, cron string, scheduledTime time.Time) (*proto.JobReport, error) {
+	if activityID == "" {
+		return nil, errors.Error("activity id is empty")
+	}
+	toBeScheduledJob := &proto.Job{
+		ActivityId: activityID,
+		Param:      param,
+		JobType:    jobType,
+	}
+	if jobType == proto.JobType_RECURRING {
+		toBeScheduledJob.JobSchedule = &proto.Job_CronExpression{
+			CronExpression: cron,
+		}
+	} else {
+		toBeScheduledJob.JobSchedule = &proto.Job_ScheduledTimeSeconds{
+			ScheduledTimeSeconds: int32(scheduledTime.Unix()),
+		}
+	}
+	return s.workerManager.ScheduleJob(ctx, toBeScheduledJob)
 }
 
 func (s *adminService) GetLogsByJobID(ctx context.Context, jobID string) ([]*proto.JobLog, error) {

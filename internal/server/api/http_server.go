@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"time"
 
 	"github.com/dlshle/aghs/contrib/middlewares"
 	"github.com/dlshle/aghs/server"
@@ -18,9 +19,12 @@ type httpServer struct {
 }
 
 type DispatchJobRequest struct {
-	WorkerID   string `json:"workerId"`
-	ActivityID string `json:"activityId"`
-	Payload    string `json:"payload"`
+	WorkerID      string `json:"workerId"`
+	ActivityID    string `json:"activityId"`
+	Payload       string `json:"payload"`
+	Type          string `json:"type"`
+	Cron          string `json:"cron"`
+	ScheduledTime string `json:"scheduledTime"` // needs to be iso timestamp
 }
 
 func NewHTTPServer(port int, adminService service.AdminService) (*httpServer, error) {
@@ -105,12 +109,27 @@ func NewHTTPServer(port int, adminService service.AdminService) (*httpServer, er
 				ctx = logging.WrapCtx(ctx, "adminService", "DispatchJob")
 				ctx = logging.WrapCtx(ctx, "workerID", c.Data().WorkerID)
 				ctx = logging.WrapCtx(ctx, "activityID", c.Data().ActivityID)
+				ctx = logging.WrapCtx(ctx, "jobType", c.Data().Type)
 				data := c.Data()
 				decoded, err := base64.StdEncoding.DecodeString(data.Payload)
 				if err != nil {
 					return server.NewResponse(500, err.Error())
 				}
-				jobReport, err := adminService.DispatchJob(ctx, data.ActivityID, data.WorkerID, decoded)
+				var jobReport *proto.JobReport
+				switch data.Type {
+				case "recurring":
+					jobReport, err = adminService.ScheduleJob(ctx, data.ActivityID, data.WorkerID, decoded, proto.JobType_RECURRING, data.Cron, time.Now())
+				case "scheduled":
+					// validate job type
+					parsedTime, perr := time.Parse(time.RFC3339, data.ScheduledTime)
+					if perr != nil {
+						err = perr
+						break
+					}
+					jobReport, err = adminService.ScheduleJob(ctx, data.ActivityID, data.WorkerID, decoded, proto.JobType_SCHEDULED, data.Cron, parsedTime)
+				default:
+					jobReport, err = adminService.DispatchJob(ctx, data.ActivityID, data.WorkerID, decoded)
+				}
 				if err != nil {
 					return server.NewResponse(500, err.Error())
 				}

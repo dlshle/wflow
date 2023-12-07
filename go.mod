@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/dlshle/aghs v1.4.60
 	github.com/dlshle/gommon v0.4.73
-	github.com/dlshle/gts v0.0.4
+	github.com/dlshle/gts v0.0.15
 	google.golang.org/grpc v1.53.0
 )
 
@@ -22,6 +22,7 @@ require (
 	github.com/jmoiron/sqlx v1.3.5
 	github.com/lib/pq v1.10.9
 	github.com/petermattis/goid v0.0.0-20220331194723-8ee3e6ded87a // indirect
+	github.com/robfig/cron v1.2.0
 	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/sys v0.4.0 // indirect
 	golang.org/x/text v0.6.0 // indirect

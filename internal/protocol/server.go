@@ -22,23 +22,25 @@ type TCPServer interface {
 	DisconnectWorkerConnections(string) error
 	GetWorkerConnectionByID(string) WorkerConnection
 	RequestWorkers(string, *proto.Message) (*proto.Message, error)
+	OnWorkerDisconnected(func(workerID string))
 	Close() error
 	Wait() error
 }
 
 type tcpServer struct {
-	ctx                 context.Context // this must hold logging ctx w/ server_id to s.id
-	tcpServer           gts.TCPServer
-	id                  string
-	logger              logging.Logger
-	messageHandler      MessageHandler
-	connectedWorkers    map[string]*workerConnection // we gotta make sure each worker represents a process and has a unique id, a worker could have multiple connections
-	notificationEmitter notification.WRNotificationEmitter[*proto.Message]
-	asyncPool           async.AsyncPool
-	startedTime         time.Time
-	rwLock              *sync.RWMutex
-	lastErr             error
-	stopEventWaiter     *async.WaitLock
+	ctx                  context.Context // this must hold logging ctx w/ server_id to s.id
+	tcpServer            gts.TCPServer
+	id                   string
+	logger               logging.Logger
+	messageHandler       MessageHandler
+	connectedWorkers     map[string]*workerConnection // we gotta make sure each worker represents a process and has a unique id, a worker could have multiple connections
+	notificationEmitter  notification.WRNotificationEmitter[*proto.Message]
+	asyncPool            async.AsyncPool
+	startedTime          time.Time
+	rwLock               *sync.RWMutex
+	lastErr              error
+	stopEventWaiter      *async.WaitLock
+	onWorkerDisconnected func(workerID string)
 }
 
 func NewTCPServer(serverID, address string, port int, messageHandler MessageHandler) TCPServer {
@@ -133,16 +135,25 @@ func (s *tcpServer) init() {
 		ctx := logging.WrapCtx(s.ctx, "address", c.Address())
 		s.logger.Infof(ctx, "client %s connected", c.Address())
 		// flow to get
-		workerConn, err := s.exchangeProtocol(c)
+		workerConn, generalConn, err := s.exchangeProtocol(c)
 		if err != nil {
 			s.logger.Errorf(ctx, "failed to exchange protocol with client %s: %s", c.Address(), err.Error())
 			c.Close()
 			return
 		}
+		startTime := time.Now()
+		timer := time.AfterFunc(15*time.Second, func() {
+			s.logger.Warnf(ctx, "worker connection %s is inactive for timeout, closing, delta = %v", workerConn.ID(), time.Since(startTime))
+			generalConn.Close()
+		})
 		ctx = logging.WrapCtx(ctx, "worker", workerConn.ID())
 
 		byteMessageHandler := createHandler(s.messageHandler, s.notificationEmitter)
 		c.OnMessage(func(b []byte) {
+			timer.Reset(10 * time.Second)
+			startTime = time.Now()
+			s.logger.Debugf(ctx, "received message from worker %s, resetting timeout", workerConn.ID())
+			// byteMessageHandler(ctx, workerConn, b)
 			s.asyncPool.Execute(func() {
 				byteMessageHandler(ctx, workerConn, b)
 			})
@@ -152,9 +163,13 @@ func (s *tcpServer) init() {
 			c.Close()
 		})
 		c.OnClose(func(err error) {
+			timer.Stop()
 			s.logger.Warn(ctx, "worker connection "+workerConn.ID()+" closed")
-			s.removeConnectedWorker(workerConn.ID(), workerConn.ConnGID())
+			s.removeConnectedWorker(workerConn.ID(), generalConn)
 		})
+		// TODO remove later
+		c.EnableLogging("server")
+		c.UseV1Read()
 		s.asyncPool.Execute(c.ReadLoop)
 	})
 }
@@ -175,6 +190,10 @@ func (s *tcpServer) Broadcast(m *proto.Message) error {
 	return multiErr
 }
 
+func (s *tcpServer) OnWorkerDisconnected(cb func(workerID string)) {
+	s.onWorkerDisconnected = cb
+}
+
 func (s *tcpServer) getConnectedWorkers(id string) *workerConnection {
 	s.rwLock.RLock()
 	defer s.rwLock.RUnlock()
@@ -182,15 +201,26 @@ func (s *tcpServer) getConnectedWorkers(id string) *workerConnection {
 	return worker
 }
 
-func (s *tcpServer) removeConnectedWorker(id, addr string) {
+func (s *tcpServer) removeConnectedWorker(workerID string, conn GeneralConnection) {
 	s.rwLock.Lock()
 	defer s.rwLock.Unlock()
-	delete(s.connectedWorkers, id)
+	workerConn := s.connectedWorkers[workerID]
+	if workerConn == nil {
+		return
+	}
+	workerConn.removeWorkerConn(conn)
+	if !workerConn.IsActive() {
+		delete(s.connectedWorkers, workerID)
+		if s.onWorkerDisconnected != nil {
+			s.onWorkerDisconnected(workerID)
+		}
+	}
 }
 
 func (s *tcpServer) addConnectionWorker(workerID string, conn GeneralConnection) *workerConnection {
 	s.rwLock.Lock()
 	defer s.rwLock.Unlock()
+	s.logger.Debugf(s.ctx, "adding connection for worker %s", workerID)
 	workerConn := s.connectedWorkers[workerID]
 	if workerConn != nil {
 		workerConn.addWorkerConn(conn)
@@ -198,37 +228,38 @@ func (s *tcpServer) addConnectionWorker(workerID string, conn GeneralConnection)
 		workerConn = NewWorkerConnection(workerID, conn)
 	}
 	s.connectedWorkers[workerID] = workerConn
+	s.logger.Debugf(s.ctx, "worker %s added", workerID)
 	return workerConn
 }
 
-func (s *tcpServer) exchangeProtocol(c gts.Connection) (WorkerConnection, error) {
+func (s *tcpServer) exchangeProtocol(c gts.Connection) (WorkerConnection, GeneralConnection, error) {
 	// client should send the first stream on connected, and then server sends back the server information in message
 	s.logger.Infof(s.ctx, "try to read first stream from connected client "+c.Address())
 	firstStream, err := c.Read()
 	if err != nil {
-		return nil, errors.Error("unable to read worker greeting: " + err.Error())
+		return nil, nil, errors.Error("unable to read worker greeting: " + err.Error())
 	}
 	workerResp := &proto.Message{}
 	err = gproto.Unmarshal(firstStream, workerResp)
 	if err != nil {
-		return nil, errors.Error("unable to parse worker greeting: " + err.Error())
+		return nil, nil, errors.Error("unable to parse worker greeting: " + err.Error())
 	}
 	if workerResp.Type != proto.Type_PING {
-		return nil, errors.Error("unexpected worker greeting message type " + workerResp.Type.String())
+		return nil, nil, errors.Error("unexpected worker greeting message type " + workerResp.Type.String())
 	}
 	workerInfo := &proto.Worker{}
 	err = gproto.Unmarshal(workerResp.Payload, workerInfo)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	err = s.replyServerInformation(c, workerResp)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	conn := NewGeneralConnection(c, s.notificationEmitter, DefaultRequestTimeoutMS)
 	// register worker to server
 	workerConn := s.addConnectionWorker(workerResp.Id, conn)
-	return workerConn, err
+	return workerConn, conn, err
 }
 
 func (s *tcpServer) replyServerInformation(c gts.Connection, workerMessage *proto.Message) error {

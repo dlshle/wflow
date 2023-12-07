@@ -1,5 +1,5 @@
 import { HTTPClient, Request, Response } from "../http";
-import {AdminActivitiesResponse, AdminWorkersResponse, Worker, Job, JobLog, WrappedLogs as JobLogs, Activity, JobReport, AdminActivitiesWithJobIDsResponse, ActivityWithJobIDs} from '../types';
+import {AdminActivitiesResponse, AdminWorkersResponse, Worker, Job, JobLog, WrappedLogs as JobLogs, Activity, JobReport, AdminActivitiesWithJobIDsResponse, ActivityWithJobIDs, WrappedLogs} from '../types';
 
 export class AdminClient {
     private _httpClient: HTTPClient;
@@ -40,6 +40,15 @@ export class AdminClient {
         return this._handleResponse(response);    
     }
 
+    async getWorkersByActivityID(activityID: string): Promise<Worker[]> {
+        const response = await this._httpClient.request<AdminWorkersResponse>({
+            path: `${this._host}/workers/${activityID}`,
+            method: 'GET',
+        } as Request);
+        const workers = this._handleResponse(response).workers;
+        return [...Object.values(workers?? {})];
+    }
+
     async getJob(jobID: string): Promise<JobReport> {
         const response = await this._httpClient.request<JobReport>({
             path: `${this._host}/jobs/${jobID}`,
@@ -63,7 +72,7 @@ export class AdminClient {
             payload: base64EncodedParam,
         };
         // @ts-ignore
-        workerID && (requestBody.workerId = workerID);
+        !!workerID && (requestBody.workerId = workerID);
         const response = await this._httpClient.request<JobReport>({
             path: `${this._host}/jobs`,
             method: 'POST',

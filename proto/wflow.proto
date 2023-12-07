@@ -41,6 +41,12 @@ enum WorkerStatus {
     ACTIVE = 2;
 }
 
+enum JobType {
+    NORMAL = 0;
+    RECURRING = 1;
+    SCHEDULED = 2;
+}
+
 message Message {
     string id = 1; // uuid
     // string worker_id = 2;
@@ -62,6 +68,13 @@ message Job {
     string activity_id = 2;
     bytes param = 3;
     int32 dispatch_time_in_seconds = 4;
+    JobType job_type = 5;
+    oneof job_schedule {
+        string cron_expression = 6; // recurring job scheduling period can not be less than 30 seconds
+        int32 scheduled_time_seconds = 7;
+    }
+    string parent_job_id = 8;
+    int32 created_at = 9;
 }
 
 message JobReport {
@@ -86,6 +99,7 @@ message Worker {
     repeated Activity supported_activities = 5;
     WorkerStatus worker_status = 6;
     int64 created_at_seconds = 7;
+    string worker_ip = 8;
 }
 
 message Server {

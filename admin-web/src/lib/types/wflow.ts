@@ -37,6 +37,11 @@ export enum WorkerStatus {
     ONLINE = 1,
     ACTIVE = 2
 }
+export enum JobType {
+    NORMAL = 0,
+    RECURRING = 1,
+    SCHEDULED = 2
+}
 export enum LogLevel {
     DEBUG = 0,
     INFO = 1,
@@ -340,13 +345,22 @@ export class Activity extends pb_1.Message {
     }
 }
 export class Job extends pb_1.Message {
-    #one_of_decls: number[][] = [];
-    constructor(data?: any[] | {
+    #one_of_decls: number[][] = [[6, 7]];
+    constructor(data?: any[] | ({
         id?: string;
         activity_id?: string;
         param?: Uint8Array;
         dispatch_time_in_seconds?: number;
-    }) {
+        job_type?: JobType;
+        parent_job_id?: string;
+        created_at?: number;
+    } & (({
+        cron_expression?: string;
+        scheduled_time_seconds?: never;
+    } | {
+        cron_expression?: never;
+        scheduled_time_seconds?: number;
+    })))) {
         super();
         pb_1.Message.initialize(this, Array.isArray(data) ? data : [], 0, -1, [], this.#one_of_decls);
         if (!Array.isArray(data) && typeof data == "object") {
@@ -361,6 +375,21 @@ export class Job extends pb_1.Message {
             }
             if ("dispatch_time_in_seconds" in data && data.dispatch_time_in_seconds != undefined) {
                 this.dispatch_time_in_seconds = data.dispatch_time_in_seconds;
+            }
+            if ("job_type" in data && data.job_type != undefined) {
+                this.job_type = data.job_type;
+            }
+            if ("cron_expression" in data && data.cron_expression != undefined) {
+                this.cron_expression = data.cron_expression;
+            }
+            if ("scheduled_time_seconds" in data && data.scheduled_time_seconds != undefined) {
+                this.scheduled_time_seconds = data.scheduled_time_seconds;
+            }
+            if ("parent_job_id" in data && data.parent_job_id != undefined) {
+                this.parent_job_id = data.parent_job_id;
+            }
+            if ("created_at" in data && data.created_at != undefined) {
+                this.created_at = data.created_at;
             }
         }
     }
@@ -388,11 +417,62 @@ export class Job extends pb_1.Message {
     set dispatch_time_in_seconds(value: number) {
         pb_1.Message.setField(this, 4, value);
     }
+    get job_type() {
+        return pb_1.Message.getFieldWithDefault(this, 5, JobType.NORMAL) as JobType;
+    }
+    set job_type(value: JobType) {
+        pb_1.Message.setField(this, 5, value);
+    }
+    get cron_expression() {
+        return pb_1.Message.getFieldWithDefault(this, 6, "") as string;
+    }
+    set cron_expression(value: string) {
+        pb_1.Message.setOneofField(this, 6, this.#one_of_decls[0], value);
+    }
+    get has_cron_expression() {
+        return pb_1.Message.getField(this, 6) != null;
+    }
+    get scheduled_time_seconds() {
+        return pb_1.Message.getFieldWithDefault(this, 7, 0) as number;
+    }
+    set scheduled_time_seconds(value: number) {
+        pb_1.Message.setOneofField(this, 7, this.#one_of_decls[0], value);
+    }
+    get has_scheduled_time_seconds() {
+        return pb_1.Message.getField(this, 7) != null;
+    }
+    get parent_job_id() {
+        return pb_1.Message.getFieldWithDefault(this, 8, "") as string;
+    }
+    set parent_job_id(value: string) {
+        pb_1.Message.setField(this, 8, value);
+    }
+    get created_at() {
+        return pb_1.Message.getFieldWithDefault(this, 9, 0) as number;
+    }
+    set created_at(value: number) {
+        pb_1.Message.setField(this, 9, value);
+    }
+    get job_schedule() {
+        const cases: {
+            [index: number]: "none" | "cron_expression" | "scheduled_time_seconds";
+        } = {
+            0: "none",
+            6: "cron_expression",
+            7: "scheduled_time_seconds"
+        };
+        return cases[pb_1.Message.computeOneofCase(this, [6, 7])];
+    }
     static fromObject(data: {
         id?: string;
         activity_id?: string;
         param?: Uint8Array;
         dispatch_time_in_seconds?: number;
+        job_type?: JobType;
+        cron_expression?: string;
+        scheduled_time_seconds?: number;
+        parent_job_id?: string;
+        created_at?: number;
     }): Job {
         const message = new Job({});
         if (data.id != null) {
@@ -407,6 +487,21 @@ export class Job extends pb_1.Message {
         if (data.dispatch_time_in_seconds != null) {
             message.dispatch_time_in_seconds = data.dispatch_time_in_seconds;
         }
+        if (data.job_type != null) {
+            message.job_type = data.job_type;
+        }
+        if (data.cron_expression != null) {
+            message.cron_expression = data.cron_expression;
+        }
+        if (data.scheduled_time_seconds != null) {
+            message.scheduled_time_seconds = data.scheduled_time_seconds;
+        }
+        if (data.parent_job_id != null) {
+            message.parent_job_id = data.parent_job_id;
+        }
+        if (data.created_at != null) {
+            message.created_at = data.created_at;
+        }
         return message;
     }
     toObject() {
@@ -415,6 +510,11 @@ export class Job extends pb_1.Message {
             activity_id?: string;
             param?: Uint8Array;
             dispatch_time_in_seconds?: number;
+            job_type?: JobType;
+            cron_expression?: string;
+            scheduled_time_seconds?: number;
+            parent_job_id?: string;
+            created_at?: number;
         } = {};
         if (this.id != null) {
             data.id = this.id;
@@ -427,6 +527,21 @@ export class Job extends pb_1.Message {
         }
         if (this.dispatch_time_in_seconds != null) {
             data.dispatch_time_in_seconds = this.dispatch_time_in_seconds;
+        }
+        if (this.job_type != null) {
+            data.job_type = this.job_type;
+        }
+        if (this.cron_expression != null) {
+            data.cron_expression = this.cron_expression;
+        }
+        if (this.scheduled_time_seconds != null) {
+            data.scheduled_time_seconds = this.scheduled_time_seconds;
+        }
+        if (this.parent_job_id != null) {
+            data.parent_job_id = this.parent_job_id;
+        }
+        if (this.created_at != null) {
+            data.created_at = this.created_at;
         }
         return data;
     }
@@ -442,6 +557,16 @@ export class Job extends pb_1.Message {
             writer.writeBytes(3, this.param);
         if (this.dispatch_time_in_seconds != 0)
             writer.writeInt32(4, this.dispatch_time_in_seconds);
+        if (this.job_type != JobType.NORMAL)
+            writer.writeEnum(5, this.job_type);
+        if (this.has_cron_expression)
+            writer.writeString(6, this.cron_expression);
+        if (this.has_scheduled_time_seconds)
+            writer.writeInt32(7, this.scheduled_time_seconds);
+        if (this.parent_job_id.length)
+            writer.writeString(8, this.parent_job_id);
+        if (this.created_at != 0)
+            writer.writeInt32(9, this.created_at);
         if (!w)
             return writer.getResultBuffer();
     }
@@ -462,6 +587,21 @@ export class Job extends pb_1.Message {
                     break;
                 case 4:
                     message.dispatch_time_in_seconds = reader.readInt32();
+                    break;
+                case 5:
+                    message.job_type = reader.readEnum();
+                    break;
+                case 6:
+                    message.cron_expression = reader.readString();
+                    break;
+                case 7:
+                    message.scheduled_time_seconds = reader.readInt32();
+                    break;
+                case 8:
+                    message.parent_job_id = reader.readString();
+                    break;
+                case 9:
+                    message.created_at = reader.readInt32();
                     break;
                 default: reader.skipField();
             }
@@ -762,6 +902,7 @@ export class Worker extends pb_1.Message {
         supported_activities?: Activity[];
         worker_status?: WorkerStatus;
         created_at_seconds?: number;
+        worker_ip?: string;
     } & (({
         connected_server?: string;
     })))) {
@@ -788,6 +929,9 @@ export class Worker extends pb_1.Message {
             }
             if ("created_at_seconds" in data && data.created_at_seconds != undefined) {
                 this.created_at_seconds = data.created_at_seconds;
+            }
+            if ("worker_ip" in data && data.worker_ip != undefined) {
+                this.worker_ip = data.worker_ip;
             }
         }
     }
@@ -839,6 +983,12 @@ export class Worker extends pb_1.Message {
     set created_at_seconds(value: number) {
         pb_1.Message.setField(this, 7, value);
     }
+    get worker_ip() {
+        return pb_1.Message.getFieldWithDefault(this, 8, "") as string;
+    }
+    set worker_ip(value: string) {
+        pb_1.Message.setField(this, 8, value);
+    }
     get _connected_server() {
         const cases: {
             [index: number]: "none" | "connected_server";
@@ -856,6 +1006,7 @@ export class Worker extends pb_1.Message {
         supported_activities?: ReturnType<typeof Activity.prototype.toObject>[];
         worker_status?: WorkerStatus;
         created_at_seconds?: number;
+        worker_ip?: string;
     }): Worker {
         const message = new Worker({});
         if (data.id != null) {
@@ -879,6 +1030,9 @@ export class Worker extends pb_1.Message {
         if (data.created_at_seconds != null) {
             message.created_at_seconds = data.created_at_seconds;
         }
+        if (data.worker_ip != null) {
+            message.worker_ip = data.worker_ip;
+        }
         return message;
     }
     toObject() {
@@ -890,6 +1044,7 @@ export class Worker extends pb_1.Message {
             supported_activities?: ReturnType<typeof Activity.prototype.toObject>[];
             worker_status?: WorkerStatus;
             created_at_seconds?: number;
+            worker_ip?: string;
         } = {};
         if (this.id != null) {
             data.id = this.id;
@@ -912,6 +1067,9 @@ export class Worker extends pb_1.Message {
         if (this.created_at_seconds != null) {
             data.created_at_seconds = this.created_at_seconds;
         }
+        if (this.worker_ip != null) {
+            data.worker_ip = this.worker_ip;
+        }
         return data;
     }
     serialize(): Uint8Array;
@@ -932,6 +1090,8 @@ export class Worker extends pb_1.Message {
             writer.writeEnum(6, this.worker_status);
         if (this.created_at_seconds != 0)
             writer.writeInt64(7, this.created_at_seconds);
+        if (this.worker_ip.length)
+            writer.writeString(8, this.worker_ip);
         if (!w)
             return writer.getResultBuffer();
     }
@@ -961,6 +1121,9 @@ export class Worker extends pb_1.Message {
                     break;
                 case 7:
                     message.created_at_seconds = reader.readInt64();
+                    break;
+                case 8:
+                    message.worker_ip = reader.readString();
                     break;
                 default: reader.skipField();
             }

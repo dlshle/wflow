@@ -6,6 +6,9 @@ var Versions = []string{
 		payload bytea,
 		created_at timestamp default now(),
 		activity_id uuid,
+		job_type int,
+		is_completed boolean default false,
+		parent_job_id uuid,
 		PRIMARY KEY ( id )
 	);
 	
@@ -27,6 +30,7 @@ var Versions = []string{
 		id serial not null,
 		job_id uuid,
 		worker_id uuid,
+		created_at timestamp default now(),
 		PRIMARY KEY ( id )
 	);
 	
@@ -34,6 +38,7 @@ var Versions = []string{
 		id serial not null,
 		activity_id uuid,
 		worker_id uuid,
+		created_at timestamp default now(),
 		PRIMARY KEY ( id )
 	);
 	

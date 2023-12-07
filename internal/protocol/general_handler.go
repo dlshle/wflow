@@ -22,6 +22,7 @@ func createHandler(messageHandler MessageHandler, eventEmitter notification.WRNo
 			return
 		}
 		ctx = logging.WrapCtx(ctx, "message_id", m.Id)
+		logger.Debugf(ctx, "received message %v", m)
 		processed := eventEmitter.Notify(m.Id, m)
 		if m.Type == proto.Type_RESPONSE {
 			if !processed {

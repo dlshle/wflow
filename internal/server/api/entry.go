@@ -3,13 +3,16 @@ package api
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/dlshle/aghs/server"
+	"github.com/dlshle/gommon/async"
 	"github.com/dlshle/gommon/logging"
 	"github.com/dlshle/gommon/utils"
 	"github.com/dlshle/wflow/internal/protocol"
 	"github.com/dlshle/wflow/internal/server/activity"
 	"github.com/dlshle/wflow/internal/server/config"
+	housekeeping "github.com/dlshle/wflow/internal/server/house_keeping"
 	"github.com/dlshle/wflow/internal/server/job"
 	"github.com/dlshle/wflow/internal/server/logs"
 	"github.com/dlshle/wflow/internal/server/migration"
@@ -61,14 +64,16 @@ func Entry(serverID, configPath string) (err error) {
 		relationMappingHandler, err = setupRelationMappingDependencies(db, activityStore)
 		return err
 	}, func() error {
-		_, jobHandler, err = setupJobsDependencies(cfg, relationMappingHandler)
+		jobHandler, err = setupJobsDependencies(cfg, relationMappingHandler)
 		return err
 	}, func() error {
-		_, workerManager, err = setupWorkerDependencies(cfg, relationMappingHandler, jobHandler, activityHandler)
+		workerManager, err = setupWorkerDependencies(cfg, relationMappingHandler, jobHandler, activityHandler)
 		return err
 	}, func() error {
 		adminService, err = setupAdminDependencies(activityHandler, relationMappingHandler, jobHandler, workerManager, logsStore)
 		return err
+	}, func() error {
+		return StartHouseKeeping(db, cfg)
 	}, func() error {
 		httpServer, err = NewHTTPServer(cfg.HTTPPort, adminService)
 		return err
@@ -134,9 +139,12 @@ func setupLogsStore(db *sqlx.DB) logs.Store {
 	return logs.NewStore(db)
 }
 
-func setupWorkerDependencies(cfg config.ServerConfig, relationMappingHandler relationmapping.Handler, jobHandler job.Handler, activityHandler activity.Handler) (workerStore worker.Store, manager worker.Manager, err error) {
-	workerStore, err = worker.NewStore(getDatabaseConnectionString(cfg))
-	manager = worker.NewManager(workerStore, relationMappingHandler, jobHandler, activityHandler)
+func setupWorkerDependencies(cfg config.ServerConfig, relationMappingHandler relationmapping.Handler, jobHandler job.Handler, activityHandler activity.Handler) (manager worker.Manager, err error) {
+	workerStore, err := worker.NewStore(getDatabaseConnectionString(cfg))
+	if err != nil {
+		return nil, err
+	}
+	manager = worker.NewManager(cfg, workerStore, relationMappingHandler, jobHandler, activityHandler)
 	return
 }
 
@@ -149,10 +157,10 @@ func setupActivityDependencies(cfg config.ServerConfig) (activityStore activity.
 	return
 }
 
-func setupJobsDependencies(cfg config.ServerConfig, relationMappingHandler relationmapping.Handler) (store job.Store, handler job.Handler, err error) {
-	store, err = job.NewStore(getDatabaseConnectionString(cfg))
+func setupJobsDependencies(cfg config.ServerConfig, relationMappingHandler relationmapping.Handler) (handler job.Handler, err error) {
+	store, err := job.NewStore(getDatabaseConnectionString(cfg))
 	if err != nil {
-		return
+		return nil, err
 	}
 	handler = job.NewHandler(store, relationMappingHandler)
 	return
@@ -167,4 +175,8 @@ func setupRelationMappingDependencies(db *sqlx.DB, activityStore activity.Store)
 func setupAdminDependencies(activityHandler activity.Handler, relationMappingHandler relationmapping.Handler, jobHandler job.Handler, workerManager worker.Manager, logsStore logs.Store) (adminService service.AdminService, err error) {
 	adminService = service.NewAdminService(jobHandler, activityHandler, relationMappingHandler, workerManager, logsStore)
 	return
+}
+
+func StartHouseKeeping(db *sqlx.DB, cfg config.ServerConfig) error {
+	return housekeeping.StartHouseKeeping(context.Background(), async.NewAsyncPool("house_keeping", 16, 8), cfg.HouseKeeping.CleanJobCron, db, time.Hour*time.Duration(cfg.HouseKeeping.KeepIntervalHours))
 }

@@ -33,12 +33,11 @@ export const ActivityJobsView: React.FC<ActivityJobsViewProps> = (props) => {
     {jobID && <RemoteView asyncViewRenderer={() => adminClient.getJob(jobID).then(job => <JobView jobReport={job}/>)} failureMessage={`failed to fetch job detail for ${jobID}`} />}
     </Modal>
 
-    // {selectedActivity && <WorkerView worker={selectedWorker} />}
-    const workerModal = <Modal title="Activity Detail" open={isModalOpen} onOk={handleOk} onCancel={handleCancel}>
+    const activityModal = <Modal title="Activity Detail" open={isModalOpen} onOk={handleOk} onCancel={handleCancel}>
         {selectedActivity && <>
-        <ActivityView activity={selectedActivity.activity} />
+        <ActivityView activity={selectedActivity.activity} showAssociatedWorkers={true}/>
         <CollapsableModel title="Schedueled Jobs"> 
-            {selectedActivity.job_ids.map((jobID) => <><a onClick={() => {
+            {(selectedActivity.job_ids?? []).map((jobID) => <><a onClick={() => {
                 setJobID(jobID);
                 setIsJobModalOpen(true);
             }}>{jobID}</a><br/></>)}
@@ -82,9 +81,9 @@ export const ActivityJobsView: React.FC<ActivityJobsViewProps> = (props) => {
             title: 'Number of Jobs',
             dataIndex: 'job_ids',
             key: 'job_ids',
-            render: (val: any) => val?.length,
+            render: (val: any) => val?.length?? 0,
         },
     ];
     // @ts-ignore
-    return isLoading ? <p>'Loading'</p> : (<><Table columns={columns} dataSource={activitiesWithJobIDs} />{workerModal}{remoteJobModal}</>)
+    return isLoading ? <p>'Loading'</p> : (<><Table columns={columns} dataSource={activitiesWithJobIDs} />{activityModal}{remoteJobModal}</>)
 };

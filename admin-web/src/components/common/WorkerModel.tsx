@@ -68,6 +68,7 @@ export const WorkerView = (props: WorkerModelProps) => {
             {worker.system_stat && <WorkerSystemStatView worker={worker} />}
             {worker.active_jobs?.length && <WorkerActiveJobsView worker={worker} />}
             {worker.supported_activities?.length && <WorkerSupportedActivitiesView worker={worker} />}
+            <p>Worker IP: {worker.worker_ip?? 'unknown'}</p>
         </>
     );
 };

@@ -41,7 +41,7 @@ type jobManager struct {
 	workerID         string
 	logger           logging.Logger
 	workerActivities map[string]activity.WorkerActivity
-	jobs             map[string]*cancellableJobReport
+	jobs             map[string]*workerJobReport
 	jobPool          async.AsyncPool
 	rwLock           *sync.RWMutex
 }
@@ -52,7 +52,7 @@ func New(workerID string, activityHandlers map[string]activity.WorkerActivity) J
 		workerID:         workerID,
 		logger:           logging.GlobalLogger.WithPrefix("[JobManager]"),
 		workerActivities: activityHandlers,
-		jobs:             make(map[string]*cancellableJobReport),
+		jobs:             make(map[string]*workerJobReport),
 		jobPool:          async.NewAsyncPool("JobManager", defaultMaxAsyncPoolSize, defaultMaxAsyncWorkerSize),
 		rwLock:           new(sync.RWMutex),
 	}
@@ -70,16 +70,22 @@ func (m *jobManager) withWrite(cb func()) {
 	cb()
 }
 
-func (m *jobManager) getJobReportByID(id string) (j *cancellableJobReport) {
+func (m *jobManager) getJobReportByID(id string) (j *workerJobReport) {
 	m.withRead(func() {
 		j = m.jobs[id]
 	})
 	return
 }
 
-func (m *jobManager) setCancellableJob(id string, jobReport *cancellableJobReport) {
+func (m *jobManager) setCancellableJob(id string, jobReport *workerJobReport) {
 	m.withWrite(func() {
 		m.jobs[id] = jobReport
+	})
+}
+
+func (m *jobManager) deleteJob(id string) {
+	m.withWrite(func() {
+		delete(m.jobs, id)
 	})
 }
 
@@ -214,23 +220,28 @@ func (m *jobManager) Handle(ctx context.Context, job *proto.Job) error {
 	if maybeJobReport != nil {
 		return errors.Error("job " + job.Id + " already exists")
 	}
-	if m.workerActivities[job.ActivityId] == nil {
+	workerActivity := m.workerActivities[job.ActivityId]
+	if workerActivity == nil {
 		return errors.Error("can not find activity handler for job " + job.Id + " with activity " + job.ActivityId)
 	}
-	jobReport := m.generateInitalJobReport(job)
+	jobReport := m.generateInitalJobReport(job, workerActivity)
 	m.setCancellableJob(job.Id, jobReport)
-	m.scheduleJob(job.Id)
+	err := m.scheduleJob(job.Id)
+	if err != nil {
+		return err
+	}
 	m.reportJobStatus(jobReport) // report dispatched
 	return nil
 }
 
-func (m *jobManager) generateInitalJobReport(job *proto.Job) *cancellableJobReport {
+func (m *jobManager) generateInitalJobReport(job *proto.Job, workerActivity activity.WorkerActivity) *workerJobReport {
 	jobCtx, cancelFunc := context.WithCancel(m.ctx)
-	jobCtx = logging.WrapCtx(m.ctx, "job_id", job.Id)
+	jobCtx = logging.WrapCtx(jobCtx, "job_id", job.Id)
 	job.DispatchTimeInSeconds = int32(time.Now().Unix())
-	return &cancellableJobReport{
+	return &workerJobReport{
 		jobCtx:     jobCtx,
 		cancelFunc: cancelFunc,
+		activity:   workerActivity,
 		JobReport: &proto.JobReport{
 			Job:      job,
 			Result:   nil,
@@ -240,10 +251,16 @@ func (m *jobManager) generateInitalJobReport(job *proto.Job) *cancellableJobRepo
 	}
 }
 
-func (m *jobManager) scheduleJob(jobID string) {
+func (m *jobManager) scheduleJob(jobID string) error {
+	// double check job existance
+	maybeJobReport := m.getJobReportByID(jobID)
+	if maybeJobReport != nil {
+		return errors.Error("job " + jobID + " already exists")
+	}
 	m.jobPool.Execute(func() {
 		m.processJob(jobID)
 	})
+	return nil
 }
 
 func (m *jobManager) processJob(jobID string) {
@@ -257,10 +274,11 @@ func (m *jobManager) processJob(jobID string) {
 	defer loggingCancelFunc()
 	jobLogger := logging.GlobalLogger.WithWriter(wlogging.NewWFlowLogWriter(remoteLogginCtx, jobID, m.serverConn))
 	m.logger.Info(jobCtx, "process job "+jobID)
+	m.checkAndWaitForScheduledJob(jobCtx, jobReport, jobLogger)
 	jobLogger.Infof(jobCtx, "job %s started", jobID)
 	jobReport.JobStartedTimeSeconds = int32(time.Now().Unix())
 	jobReport.Status = proto.JobStatus_RUNNING
-	workerActivity := m.workerActivities[jobReport.Job.ActivityId]
+	workerActivity := jobReport.activity
 	m.reportJobStatus(jobReport) // report started
 	result, err := workerActivity.Handler()(jobCtx, jobLogger, jobReport.Job.Param)
 	jobLogger.Infof(jobCtx, "job %s completed, err = %v", jobID, err)
@@ -277,10 +295,20 @@ func (m *jobManager) processJob(jobID string) {
 		jobReport.Status = proto.JobStatus_SUCCESS
 		jobReport.Result = result
 	}
-	m.setCancellableJob(jobReport.Job.Id, jobReport)
+	m.setCancellableJob(jobID, jobReport)
 	err = m.reportJobStatus(jobReport)
 	if err != nil {
 		m.logger.Infof(jobCtx, "failed to report job %s status %s due to %s", jobID, jobReport.Status.String(), err.Error())
+	}
+	// delete this job record after it's completed
+	m.deleteJob(jobID)
+}
+
+func (m *jobManager) checkAndWaitForScheduledJob(jobCtx context.Context, jobReport *workerJobReport, jobLogger logging.Logger) {
+	if jobReport.Job.JobType == proto.JobType_SCHEDULED {
+		executionTime := time.Unix(int64(jobReport.Job.GetScheduledTimeSeconds()), 0)
+		jobLogger.Infof(jobCtx, "job %s is scheduled to run at %s", jobReport.Job.Id, executionTime.String())
+		time.Sleep(time.Until(executionTime))
 	}
 }
 
@@ -288,7 +316,7 @@ func (m *jobManager) isJobCancelled(jobID string) bool {
 	return m.getJobReportByID(jobID).Status == proto.JobStatus_CANCELLED
 }
 
-func (m *jobManager) reportJobStatus(jobReport *cancellableJobReport) error {
+func (m *jobManager) reportJobStatus(jobReport *workerJobReport) error {
 	if !m.IsReady() {
 		return errors.Error("client is not ready")
 	}
