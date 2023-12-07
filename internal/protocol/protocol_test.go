@@ -22,8 +22,8 @@ func (h *loggingMessageHandler) Handle(ctx context.Context, gc GeneralConnection
 		logging.GlobalLogger.Debugf(ctx, "{%s}: received message %v and will reply", h.id, m)
 		return gc.Respond(m, proto.Status_OK, []byte("response"))
 	}
-	logging.GlobalLogger.Debugf(ctx, "{%s}: received message %v, will echo", h.id, m)
-	return gc.Respond(m, proto.Status_OK, append([]byte("received:"), m.Payload...))
+	logging.GlobalLogger.Debugf(ctx, "{%s}: received message %v", h.id, m)
+	return nil
 }
 
 func TestProtocol(t *testing.T) {
