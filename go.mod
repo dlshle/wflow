@@ -3,9 +3,9 @@ module github.com/dlshle/wflow
 go 1.18
 
 require (
-	github.com/dlshle/aghs v1.4.60
-	github.com/dlshle/gommon v0.4.73
-	github.com/dlshle/gts v0.0.15
+	github.com/dlshle/aghs v1.4.62
+	github.com/dlshle/gommon v0.4.75
+	github.com/dlshle/gts v0.1.1
 	google.golang.org/grpc v1.53.0
 )
 

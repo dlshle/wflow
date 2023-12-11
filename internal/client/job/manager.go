@@ -77,7 +77,7 @@ func (m *jobManager) getJobReportByID(id string) (j *workerJobReport) {
 	return
 }
 
-func (m *jobManager) setCancellableJob(id string, jobReport *workerJobReport) {
+func (m *jobManager) setCleintJob(id string, jobReport *workerJobReport) {
 	m.withWrite(func() {
 		m.jobs[id] = jobReport
 	})
@@ -225,7 +225,7 @@ func (m *jobManager) Handle(ctx context.Context, job *proto.Job) error {
 		return errors.Error("can not find activity handler for job " + job.Id + " with activity " + job.ActivityId)
 	}
 	jobReport := m.generateInitalJobReport(job, workerActivity)
-	m.setCancellableJob(job.Id, jobReport)
+	m.setCleintJob(job.Id, jobReport)
 	err := m.scheduleJob(job.Id)
 	if err != nil {
 		return err
@@ -252,11 +252,6 @@ func (m *jobManager) generateInitalJobReport(job *proto.Job, workerActivity acti
 }
 
 func (m *jobManager) scheduleJob(jobID string) error {
-	// double check job existance
-	maybeJobReport := m.getJobReportByID(jobID)
-	if maybeJobReport != nil {
-		return errors.Error("job " + jobID + " already exists")
-	}
 	m.jobPool.Execute(func() {
 		m.processJob(jobID)
 	})
@@ -295,7 +290,7 @@ func (m *jobManager) processJob(jobID string) {
 		jobReport.Status = proto.JobStatus_SUCCESS
 		jobReport.Result = result
 	}
-	m.setCancellableJob(jobID, jobReport)
+	m.setCleintJob(jobID, jobReport)
 	err = m.reportJobStatus(jobReport)
 	if err != nil {
 		m.logger.Infof(jobCtx, "failed to report job %s status %s due to %s", jobID, jobReport.Status.String(), err.Error())

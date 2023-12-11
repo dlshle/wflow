@@ -36,6 +36,9 @@ func NewHTTPServer(port int, adminService service.AdminService) (*httpServer, er
 				ctx := context.Background()
 				ctx = logging.WrapCtx(ctx, "adminService", "ListAllActiveWorkerConnections")
 				workerProtos, err := adminService.ListAllActiveWorkers(ctx)
+				if err != nil {
+					server.NewResponse(500, err.Error())
+				}
 				workersMap := make(map[string]*proto.Worker)
 				for _, worker := range workerProtos {
 					workersMap[worker.Id] = worker
@@ -229,7 +232,13 @@ func NewHTTPServer(port int, adminService service.AdminService) (*httpServer, er
 	if err != nil {
 		return nil, err
 	}
-	actualHTTPServer, err := server.NewBuilder().WithMiddleware(middlewares.CORSAllowWildcardMiddleware).WithService(adminHTTPServerService).Address(fmt.Sprintf("0.0.0.0:%d", port)).Build()
+	actualHTTPServer, err := server.
+		NewBuilder().
+		WithMiddleware(middlewares.CORSAllowWildcardMiddleware).
+		WithService(adminHTTPServerService).
+		Address(fmt.Sprintf("0.0.0.0:%d", port)).
+		Logger(logging.GlobalLogger.WithWaterMark(logging.INFO)).
+		Build()
 	if err != nil {
 		return nil, err
 	}

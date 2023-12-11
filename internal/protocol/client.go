@@ -163,7 +163,6 @@ func (c *tcpClient) exchangeProtocolAndAttachServerConnection(conn gts.Connectio
 
 func (c *tcpClient) healthCheckRoutine() {
 	time.Sleep(time.Second)
-	c.logger.Debugf(c.ctx, "starting health check routine")
 	timer := ctimer.New(time.Second*5, c.healthCheck)
 	timer.WithAsyncPool(c.asyncPool)
 	timer.Repeat()
@@ -183,7 +182,6 @@ func (c *tcpClient) healthCheck() {
 }
 
 func (c *tcpClient) doHealthCheck() error {
-	c.logger.Debugf(c.ctx, "performing health check")
 	mID, err := uuid.NewV4()
 	if err != nil {
 		return err

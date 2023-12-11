@@ -83,7 +83,6 @@ func (c *generalConnection) requestWithTimeout(timeoutInMs int, m *proto.Message
 	startTime := time.Now()
 	channel := make(chan *proto.Message, 1)
 	disposable, err := c.notificationCenter.On(m.Id, func(m *proto.Message) {
-		logging.GlobalLogger.Debugf(context.Background(), "received response for message %s", m.Id)
 		channel <- m
 	})
 	if err != nil {

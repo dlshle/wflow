@@ -165,7 +165,6 @@ func (s *tcpServer) init() {
 			s.logger.Warn(ctx, "worker connection "+workerConn.ID()+" closed")
 			s.removeConnectedWorker(workerConn.ID(), generalConn)
 		})
-		c.UseV1Read()
 		s.asyncPool.Execute(c.ReadLoop)
 	})
 }
@@ -216,7 +215,6 @@ func (s *tcpServer) removeConnectedWorker(workerID string, conn GeneralConnectio
 func (s *tcpServer) addConnectionWorker(workerID string, conn GeneralConnection) *workerConnection {
 	s.rwLock.Lock()
 	defer s.rwLock.Unlock()
-	s.logger.Debugf(s.ctx, "adding connection for worker %s", workerID)
 	workerConn := s.connectedWorkers[workerID]
 	if workerConn != nil {
 		workerConn.addWorkerConn(conn)
@@ -224,7 +222,6 @@ func (s *tcpServer) addConnectionWorker(workerID string, conn GeneralConnection)
 		workerConn = NewWorkerConnection(workerID, conn)
 	}
 	s.connectedWorkers[workerID] = workerConn
-	s.logger.Debugf(s.ctx, "worker %s added", workerID)
 	return workerConn
 }
 
