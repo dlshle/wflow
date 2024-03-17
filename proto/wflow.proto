@@ -23,6 +23,7 @@ enum Type {
     JOB_UPDATE = 8; // client to server for job update(completion with result, failed with reason)
     WORKER_READY = 10; // client to server only
     UPLOAD_LOGS = 11; // client to server only
+    SCHEDULE_JOB = 12; // from server only
     CUSTOM = 100; // custom message for both server and worker
 }
 
@@ -92,7 +93,7 @@ message ActivityWithJobIDs {
 }
 
 message Worker {
-    string id = 1;
+    string id = 1; // this is randomly generated uuid
     SystemStat system_stat = 2;
     repeated string active_jobs = 3;
     optional string connected_server = 4;
@@ -100,6 +101,7 @@ message Worker {
     WorkerStatus worker_status = 6;
     int64 created_at_seconds = 7;
     string worker_ip = 8;
+    string name = 9; // this should be hostName + macAddress + pid
 }
 
 message Server {

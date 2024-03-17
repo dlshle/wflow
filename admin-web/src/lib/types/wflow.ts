@@ -22,6 +22,7 @@ export enum Type {
     JOB_UPDATE = 8,
     WORKER_READY = 10,
     UPLOAD_LOGS = 11,
+    SCHEDULE_JOB = 12,
     CUSTOM = 100
 }
 export enum JobStatus {
@@ -897,6 +898,7 @@ export class Worker extends pb_1.Message {
     #one_of_decls: number[][] = [[4]];
     constructor(data?: any[] | ({
         id?: string;
+        name?: string;
         system_stat?: SystemStat;
         active_jobs?: string[];
         supported_activities?: Activity[];
@@ -911,6 +913,9 @@ export class Worker extends pb_1.Message {
         if (!Array.isArray(data) && typeof data == "object") {
             if ("id" in data && data.id != undefined) {
                 this.id = data.id;
+            }
+            if ("name" in data && data.name != undefined) {
+                this.name = data.name;
             }
             if ("system_stat" in data && data.system_stat != undefined) {
                 this.system_stat = data.system_stat;
@@ -940,6 +945,12 @@ export class Worker extends pb_1.Message {
     }
     set id(value: string) {
         pb_1.Message.setField(this, 1, value);
+    }
+    get name() {
+        return pb_1.Message.getFieldWithDefault(this, 9, "") as string;
+    }
+    set name(value: string) {
+        pb_1.Message.setField(this, 9, value);
     }
     get system_stat() {
         return pb_1.Message.getWrapperField(this, SystemStat, 2) as SystemStat;
@@ -1000,6 +1011,7 @@ export class Worker extends pb_1.Message {
     }
     static fromObject(data: {
         id?: string;
+        name?: string;
         system_stat?: ReturnType<typeof SystemStat.prototype.toObject>;
         active_jobs?: string[];
         connected_server?: string;
@@ -1011,6 +1023,9 @@ export class Worker extends pb_1.Message {
         const message = new Worker({});
         if (data.id != null) {
             message.id = data.id;
+        }
+        if (data.name != null) {
+            message.name = data.name;
         }
         if (data.system_stat != null) {
             message.system_stat = SystemStat.fromObject(data.system_stat);
@@ -1038,6 +1053,7 @@ export class Worker extends pb_1.Message {
     toObject() {
         const data: {
             id?: string;
+            name?: string;
             system_stat?: ReturnType<typeof SystemStat.prototype.toObject>;
             active_jobs?: string[];
             connected_server?: string;
@@ -1048,6 +1064,9 @@ export class Worker extends pb_1.Message {
         } = {};
         if (this.id != null) {
             data.id = this.id;
+        }
+        if (this.name != null) {
+            data.name = this.name;
         }
         if (this.system_stat != null) {
             data.system_stat = this.system_stat.toObject();
@@ -1078,6 +1097,8 @@ export class Worker extends pb_1.Message {
         const writer = w || new pb_1.BinaryWriter();
         if (this.id.length)
             writer.writeString(1, this.id);
+        if (this.name.length)
+            writer.writeString(9, this.name);
         if (this.has_system_stat)
             writer.writeMessage(2, this.system_stat, () => this.system_stat.serialize(writer));
         if (this.active_jobs.length)
@@ -1103,6 +1124,9 @@ export class Worker extends pb_1.Message {
             switch (reader.getFieldNumber()) {
                 case 1:
                     message.id = reader.readString();
+                    break;
+                case 9:
+                    message.name = reader.readString();
                     break;
                 case 2:
                     reader.readMessage(message.system_stat, () => message.system_stat = SystemStat.deserialize(reader));

@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"github.com/dlshle/gommon/async"
-	"github.com/dlshle/gommon/ctimer"
 	"github.com/dlshle/gommon/errors"
 	"github.com/dlshle/gommon/logging"
 	"github.com/dlshle/gommon/notification"
+	"github.com/dlshle/gommon/timer"
 	"github.com/dlshle/gts"
 	"github.com/dlshle/wflow/pkg/utils"
 	"github.com/dlshle/wflow/proto"
@@ -34,10 +34,11 @@ type tcpClient struct {
 	supportedActivities []*proto.Activity
 	connectedServer     *proto.Server
 	serverConn          ServerConnection
+	healthCheckTimer    timer.Timer
 	onConnRecovered     func(ServerConnection, *proto.Server)
 }
 
-func NewTCPClient(id, address string, port int, messageHandler MessageHandler, supportedActivities []*proto.Activity, onProtocolExchanged func(ServerConnection, *proto.Server)) TCPClient {
+func NewTCPClient(id, address string, port int, asyncPool async.AsyncPool, messageHandler MessageHandler, supportedActivities []*proto.Activity, onProtocolExchanged func(ServerConnection, *proto.Server)) TCPClient {
 	rawClient := gts.NewTCPClient(address, port)
 	c := &tcpClient{
 		ctx:                 logging.WrapCtx(context.Background(), "client_id", id),
@@ -45,7 +46,7 @@ func NewTCPClient(id, address string, port int, messageHandler MessageHandler, s
 		logger:              logging.GlobalLogger.WithPrefix("[TCPClient]"),
 		messageHandler:      messageHandler,
 		notificationEmitter: notification.New[*proto.Message](DefaultMaxNotificationListeners),
-		asyncPool:           async.NewAsyncPool(id, DefaultMaxPoolSize, DefaultMaxAsyncPoolWorkerSize),
+		asyncPool:           asyncPool,
 		supportedActivities: supportedActivities,
 		onConnRecovered:     onProtocolExchanged,
 		tcpClient:           rawClient,
@@ -64,7 +65,7 @@ func (c *tcpClient) init() {
 	})
 	c.tcpClient.OnConnectionEstablished(func(conn gts.Connection) {
 		c.ctx = logging.WrapCtx(c.ctx, "server_ip", conn.Address())
-		err := c.exchangeProtocolAndAttachServerConnection(conn)
+		serverConn, err := c.exchangeProtocolAndAttachServerConnection(conn)
 		if err != nil {
 			c.logger.Errorf(c.ctx, "failed to exchange protocol with %s due to %s", conn.Address(), err.Error())
 			conn.Close()
@@ -80,6 +81,7 @@ func (c *tcpClient) init() {
 		c.asyncPool.Execute(conn.ReadLoop)
 
 		c.healthCheckRoutine()
+		c.onConnRecovered(serverConn, c.ServerInfo())
 	})
 }
 
@@ -109,7 +111,7 @@ func (c *tcpClient) Close() error {
 	return err
 }
 
-func (c *tcpClient) exchangeProtocolAndAttachServerConnection(conn gts.Connection) error {
+func (c *tcpClient) exchangeProtocolAndAttachServerConnection(conn gts.Connection) (ServerConnection, error) {
 	c.logger.Info(c.ctx, "attempting to exchange protocol with server "+conn.String())
 	clientStat := utils.GetSystemStat()
 	clientInfo := &proto.Worker{
@@ -120,7 +122,7 @@ func (c *tcpClient) exchangeProtocolAndAttachServerConnection(conn gts.Connectio
 	}
 	clientInfoData, err := gproto.Marshal(clientInfo)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	clientInfoRequest := &proto.Message{
 		Id:      c.id,
@@ -129,43 +131,46 @@ func (c *tcpClient) exchangeProtocolAndAttachServerConnection(conn gts.Connectio
 	}
 	clientInfoRequestData, err := gproto.Marshal(clientInfoRequest)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = conn.Write(clientInfoRequestData)
 	if err != nil {
 		c.logger.Info(c.ctx, "failed to send initial client info request to server due to "+err.Error())
-		return err
+		return nil, err
 	}
 	// waiting for server response with server info
 	serverInfoData, err := conn.Read()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	serverInfoResponse := &proto.Message{}
 	err = gproto.Unmarshal(serverInfoData, serverInfoResponse)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if serverInfoResponse.Type != proto.Type_PONG {
 		c.logger.Error(c.ctx, "unexpected server response type for protocol exchange "+serverInfoResponse.Type.String())
-		return err
+		return nil, err
 	}
 	serverInfo := &proto.Server{}
 	err = gproto.Unmarshal(serverInfoResponse.Payload, serverInfo)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	c.connectedServer = serverInfo
-	c.serverConn = NewServerConnection(serverInfo.Id, NewGeneralConnection(conn, c.notificationEmitter, DefaultRequestTimeoutMS))
+	serverConn := NewServerConnection(serverInfo.Id, NewGeneralConnection(conn, c.notificationEmitter, DefaultRequestTimeoutMS))
+	c.serverConn = serverConn
 	c.logger.Infof(c.ctx, "successfully exchanged protocol with server %s", serverInfo.Id)
-	return nil
+	return serverConn, nil
 }
 
 func (c *tcpClient) healthCheckRoutine() {
 	time.Sleep(time.Second)
-	timer := ctimer.New(time.Second*5, c.healthCheck)
-	timer.WithAsyncPool(c.asyncPool)
-	timer.Repeat()
+	if c.healthCheckTimer != nil {
+		c.healthCheckTimer.Stop()
+	}
+	c.healthCheckTimer = timer.New(time.Second*5, c.healthCheck)
+	c.healthCheckTimer.Repeat()
 }
 
 func (c *tcpClient) healthCheck() {
@@ -209,7 +214,7 @@ func (c *tcpClient) serverReconnectingLoop() {
 			return
 		}
 		c.logger.Info(c.ctx, "server reconnection failed due to "+err.Error())
-		time.Sleep(5000)
+		time.Sleep(time.Second * time.Duration(consecutiveFailures))
 		consecutiveFailures++
 	}
 }

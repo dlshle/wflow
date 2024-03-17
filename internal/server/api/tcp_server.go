@@ -16,6 +16,9 @@ type tcpServer struct {
 func NewTCPServer(serverID, address string, port int, workerManager worker.Manager, jobHandler job.Handler, logsStore logs.Store) *tcpServer {
 	return &tcpServer{
 		TCPServer: protocol.NewTCPServer(serverID, address, port, protocol.NewMessageHandler(map[proto.Type][]protocol.MessageProcessor{
+			proto.Type_DISPATCH_JOB: {message_processors.CreateDispatchJobProcessor(workerManager, jobHandler)},
+			proto.Type_SCHEDULE_JOB: {message_processors.CreateScheduleJobProcessor(workerManager, jobHandler)},
+			proto.Type_QUERY_JOB:    {message_processors.CreateQueryJobProcessor(workerManager, jobHandler)},
 			proto.Type_JOB_UPDATE:   {message_processors.CreateJobUpdateProcessor(workerManager, jobHandler)},
 			proto.Type_WORKER_READY: {message_processors.CreateWorkerReadyProcessor(workerManager)},
 			proto.Type_UPLOAD_LOGS:  {message_processors.CreateUploadLogsProcessor(logsStore)},

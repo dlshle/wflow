@@ -39,6 +39,7 @@ type jobManager struct {
 	serverConn       protocol.ServerConnection
 	serverInfo       *proto.Server
 	workerID         string
+	workerName       string
 	logger           logging.Logger
 	workerActivities map[string]activity.WorkerActivity
 	jobs             map[string]*workerJobReport
@@ -46,10 +47,11 @@ type jobManager struct {
 	rwLock           *sync.RWMutex
 }
 
-func New(workerID string, activityHandlers map[string]activity.WorkerActivity) JobManager {
+func New(workerID string, workerName string, activityHandlers map[string]activity.WorkerActivity) JobManager {
 	return &jobManager{
 		ctx:              logging.WrapCtx(context.Background(), "worker_id", workerID),
 		workerID:         workerID,
+		workerName:       workerName,
 		logger:           logging.GlobalLogger.WithPrefix("[JobManager]"),
 		workerActivities: activityHandlers,
 		jobs:             make(map[string]*workerJobReport),
@@ -147,6 +149,7 @@ func (m *jobManager) ActiveJobIDs() (res []string) {
 func (m *jobManager) WorkerInfo() *proto.Worker {
 	worker := &proto.Worker{
 		Id:                  m.workerID,
+		Name:                m.workerName,
 		SystemStat:          utils.GetSystemStat(),
 		ActiveJobs:          m.ActiveJobIDs(),
 		SupportedActivities: m.SupportedActivities(),

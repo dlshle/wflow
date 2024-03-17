@@ -65,18 +65,16 @@ func (w *WFlowLogWriter) Write(entity *logging.LogEntity) {
 }
 
 func (w *WFlowLogWriter) safeWriteLogs() {
-	copied := make([]*proto.JobLog, len(w.logs), len(w.logs))
+	copied := make([]*proto.JobLog, len(w.logs))
 	w.withLock(func() {
-		for i, l := range w.logs {
-			copied[i] = l
-		}
+		copy(w.logs, copied)
 		w.logs = make([]*proto.JobLog, 0)
 	})
 	w.tryUploadLogs(copied)
 }
 
 func (w *WFlowLogWriter) tryUploadLogs(logs []*proto.JobLog) {
-	if logs == nil || len(logs) == 0 {
+	if len(logs) == 0 {
 		return
 	}
 	uploadLogsRequest := &proto.WrappedLogs{
@@ -126,16 +124,16 @@ func (w *WFlowLogWriter) doUploadLogsWithRetry(r *proto.Message) (err error) {
 func mapLogLevel(originalLevel int) proto.LogLevel {
 	switch originalLevel {
 	case logging.DEBUG:
-		return logging.DEBUG
+		return proto.LogLevel_DEBUG
 	case logging.INFO:
-		return logging.INFO
+		return proto.LogLevel_INFO
 	case logging.WARN:
-		return logging.WARN
+		return proto.LogLevel_WARN
 	case logging.ERROR:
-		return logging.ERROR
+		return proto.LogLevel_ERROR
 	case logging.FATAL:
-		return logging.FATAL
+		return proto.LogLevel_FATAL
 	default:
-		return logging.INFO
+		return proto.LogLevel_INFO
 	}
 }

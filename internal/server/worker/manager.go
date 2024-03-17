@@ -68,7 +68,6 @@ type manager struct {
 	jobHandler             job.Handler
 	activityHandler        activity.Handler
 	server                 protocol.TCPServer
-	scheduledJobChan       chan *proto.Job
 	jobScheduler           *scheduler.JobScheduler
 }
 
@@ -329,12 +328,30 @@ func (m *manager) findWorkerConnForActivity(activityID string) (workerConn proto
 	if err != nil {
 		return nil, errors.Error("can not find worker by activity " + activityID + " due to " + err.Error())
 	}
+	var minCPU int32 = 100
+	var maxMemory int32 = 0
+	var bestMatches []protocol.WorkerConnection
 	for _, worker := range foundWorkers {
-		if workerConn = m.server.GetWorkerConnectionByID(worker.Id); workerConn != nil {
-			return workerConn, nil
+		if currWorkerConn := m.server.GetWorkerConnectionByID(worker.Id); currWorkerConn != nil {
+			if worker.SystemStat.CpuUsage < minCPU {
+				minCPU = worker.SystemStat.CpuUsage
+				bestMatches = []protocol.WorkerConnection{currWorkerConn}
+			} else if worker.SystemStat.CpuUsage == minCPU {
+				if worker.SystemStat.AvailableMemoryInBytes > maxMemory {
+					maxMemory = worker.SystemStat.AvailableMemoryInBytes
+					bestMatches = []protocol.WorkerConnection{currWorkerConn}
+				} else if worker.SystemStat.AvailableMemoryInBytes == maxMemory {
+					workerConn = currWorkerConn
+					bestMatches = append(bestMatches, workerConn)
+				}
+			}
 		}
 	}
-	return nil, errors.Error("can not find active worker for activity " + activityID)
+	if len(bestMatches) == 0 {
+		err = errors.Error("can not find active worker for activity " + activityID)
+	}
+	workerConn = bestMatches[0]
+	return
 }
 
 func (m *manager) GetJob(ctx context.Context, jobID string) (*proto.JobReport, error) {

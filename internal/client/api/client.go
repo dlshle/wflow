@@ -4,16 +4,23 @@ import (
 	"context"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/dlshle/gommon/async"
 	"github.com/dlshle/gommon/errors"
 	"github.com/dlshle/gommon/logging"
+	timerx "github.com/dlshle/gommon/timer"
 	"github.com/dlshle/wflow/internal/client/activity"
 	"github.com/dlshle/wflow/internal/client/job"
 	"github.com/dlshle/wflow/internal/client/message_processors"
 	"github.com/dlshle/wflow/internal/protocol"
 	"github.com/dlshle/wflow/pkg/utils"
 	"github.com/dlshle/wflow/proto"
+)
+
+const (
+	DefaultMaxPoolSize            = 2048
+	DefaultMaxAsyncPoolWorkerSize = 512
 )
 
 type WorkerClient interface {
@@ -32,6 +39,7 @@ type workerClient struct {
 
 func New(address string, port int, workerActivities []activity.WorkerActivity) (*workerClient, error) {
 	var err error
+	var timer timerx.Timer
 	// initialize activity uuids by names, activity name can't be empty
 	workerActivities, err = initializeWorkerActivities(workerActivities)
 	if err != nil {
@@ -41,16 +49,40 @@ func New(address string, port int, workerActivities []activity.WorkerActivity) (
 	if err != nil {
 		return nil, err
 	}
-	jobManager := job.New(workerID, buildWorkerActivitiesMap(workerActivities))
+	workerName, err := generateWorkerName()
+	if err != nil {
+		return nil, err
+	}
+	asyncPool := async.NewAsyncPool(workerID, DefaultMaxPoolSize, DefaultMaxAsyncPoolWorkerSize)
+	jobManager := job.New(workerID, workerName, buildWorkerActivitiesMap(workerActivities))
 	messageHandler := protocol.NewMessageHandler(map[proto.Type][]protocol.MessageProcessor{
 		proto.Type_CANCEL_JOB:          {message_processors.CreateCancelJobProcessor(jobManager)},
 		proto.Type_DISPATCH_JOB:        {message_processors.CreateDispatchJobProcessor(jobManager)},
 		proto.Type_QUERY_JOB:           {message_processors.CreateQueryJobProcessor(jobManager)},
 		proto.Type_QUERY_WORKER_STATUS: {message_processors.CreateQueryWorkerStatusProcessor(workerID, jobManager)},
 	})
-	tcpClient := protocol.NewTCPClient(workerID, address, port, messageHandler, jobManager.SupportedActivities(), func(c protocol.ServerConnection, s *proto.Server) {
-		jobManager.InitReportingServer(c, s)
-	})
+	tcpClient := protocol.NewTCPClient(workerID,
+		address,
+		port,
+		asyncPool,
+		messageHandler,
+		jobManager.SupportedActivities(),
+		func(c protocol.ServerConnection, s *proto.Server) {
+			if timer != nil {
+				timer.Stop()
+			}
+			err := jobManager.InitReportingServer(c, s)
+			if err != nil {
+				panic(err)
+			}
+			timer = timerx.New(time.Minute, func() {
+				err := jobManager.InitReportingServer(c, s)
+				if err != nil {
+					logging.GlobalLogger.Warnf(context.Background(), "failed to init reporting server: %v", err)
+				}
+			})
+			timer.Repeat()
+		})
 	return &workerClient{
 		ctx:        context.Background(),
 		workerID:   workerID,
@@ -75,6 +107,23 @@ func generateWorkerID() (workerID string, err error) {
 		return
 	}
 	workerID = utils.GenerateUUIDOnString(macAddr + hostName + strconv.Itoa(os.Getpid()))
+	return
+}
+
+func generateWorkerName() (workerName string, err error) {
+	var (
+		macAddr  string
+		hostName string
+	)
+	macAddr, err = utils.GetMACAddress()
+	if err != nil {
+		return
+	}
+	hostName, err = os.Hostname()
+	if err != nil {
+		return
+	}
+	workerName = hostName + ":" + macAddr + ":" + strconv.Itoa(os.Getpid())
 	return
 }
 

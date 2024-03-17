@@ -143,7 +143,8 @@ func (s *tcpServer) init() {
 		}
 		startTime := time.Now()
 		timer := time.AfterFunc(15*time.Second, func() {
-			s.logger.Warnf(ctx, "worker connection %s is inactive for timeout, closing, delta = %v", workerConn.ID(), time.Since(startTime))
+			s.logger.Warnf(ctx, "worker connection %s is inactive for timeout, closing, delta = %v",
+				workerConn.ID(), time.Since(startTime))
 			generalConn.Close()
 		})
 		ctx = logging.WrapCtx(ctx, "worker", workerConn.ID())
@@ -163,7 +164,7 @@ func (s *tcpServer) init() {
 		c.OnClose(func(err error) {
 			timer.Stop()
 			s.logger.Warn(ctx, "worker connection "+workerConn.ID()+" closed")
-			s.removeConnectedWorker(workerConn.ID(), generalConn)
+			s.removeConnectedWorker(workerConn.ID())
 		})
 		s.asyncPool.Execute(c.ReadLoop)
 	})
@@ -196,19 +197,13 @@ func (s *tcpServer) getConnectedWorkers(id string) *workerConnection {
 	return worker
 }
 
-func (s *tcpServer) removeConnectedWorker(workerID string, conn GeneralConnection) {
+func (s *tcpServer) removeConnectedWorker(workerID string) {
 	s.rwLock.Lock()
 	defer s.rwLock.Unlock()
-	workerConn := s.connectedWorkers[workerID]
-	if workerConn == nil {
-		return
-	}
-	workerConn.removeWorkerConn(conn)
-	if !workerConn.IsActive() {
+	conn := s.connectedWorkers[workerID]
+	if conn != nil {
 		delete(s.connectedWorkers, workerID)
-		if s.onWorkerDisconnected != nil {
-			s.onWorkerDisconnected(workerID)
-		}
+		s.onWorkerDisconnected(workerID)
 	}
 }
 
@@ -216,11 +211,10 @@ func (s *tcpServer) addConnectionWorker(workerID string, conn GeneralConnection)
 	s.rwLock.Lock()
 	defer s.rwLock.Unlock()
 	workerConn := s.connectedWorkers[workerID]
-	if workerConn != nil {
-		workerConn.addWorkerConn(conn)
-	} else {
-		workerConn = NewWorkerConnection(workerID, conn)
-	}
+	s.logger.Warnf(s.ctx, "worker %s is already connected with %s, replacing old connection with the new connection",
+		workerID,
+		workerConn.Address())
+	workerConn = NewWorkerConnection(workerID, conn)
 	s.connectedWorkers[workerID] = workerConn
 	return workerConn
 }

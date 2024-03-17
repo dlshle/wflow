@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dlshle/gommon/async"
 	"github.com/dlshle/gommon/logging"
 	"github.com/dlshle/wflow/proto"
 )
@@ -35,7 +36,7 @@ func TestProtocol(t *testing.T) {
 			panic(err)
 		}
 	}()
-	c := NewTCPClient("client", "localhost", 14514, newLoggingMessageHandler("client"), []*proto.Activity{}, func(sc ServerConnection, s *proto.Server) {
+	c := NewTCPClient("client", "localhost", 14514, async.NewAsyncPool("", 8, 8), newLoggingMessageHandler("client"), []*proto.Activity{}, func(sc ServerConnection, s *proto.Server) {
 		logging.GlobalLogger.Debugf(context.Background(), "protocol exchanged with server %v", s)
 	})
 	serverConn, err := c.Connect()
